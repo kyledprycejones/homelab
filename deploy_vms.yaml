@@ -1,0 +1,67 @@
+---
+- name: Deploy Ubuntu VMs on Proxmox
+  hosts: all
+  vars:
+    anisble_python_interpreter: env/bin/python3
+    ansible_key_file: ~/.ssh/id_rsa.pub
+    domain_name: .homelab.lan
+    timezone: Europe/London
+    locale: en_GB.UTF-8
+    image_path: /root/ubuntu-24.04.2-live-server-amd64.iso
+    api_user: root@pam
+    api_token_id: fire_token
+    api_token_secret: bdd5de18-08ed-4f7e-ad90-02343e30ddbe
+    vms:
+      - name: ubuntu-vm1
+        vmid: 100
+        ip: dhcp
+      - name: ubuntu-vm2
+        vmid: 101
+        ip: dhcp
+      - name: ubuntu-vm3
+        vmid: 102
+        ip: dhcp
+  tasks:
+    - name: Ensure snippets folder exists
+      ansible.builtin.file:
+        path: /var/lib/vz/snippets/
+        state: directory
+        mode: "0755"
+
+    - name: Create cloud-init user data files
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/templates/user-data.yml.j2"
+        dest: "/var/lib/vz/snippets/{{ item.name }}-user-data.yml"
+        mode: "0644"
+      loop: "{{ vms }}"
+
+    - name: Create virtual machines
+      community.general.proxmox_kvm:
+        api_user: "{{ api_user }}"
+        api_token_id: "{{ api_token_id }}"
+        api_token_secret: "{{ api_token_secret }}"
+        api_host: "{{ inventory_hostname }}"
+        node: "{{ inventory_hostname }}"
+        name: "{{ item.name }}"
+        vmid: "{{ item.vmid }}"
+        ide:
+          ide0: "local:iso={{ image_path }},media=cdrom"
+        net:
+          net0: "virtio,bridge=vmbr0"
+        ipconfig:
+          ipconfig0: "ip={{ item.ip }}"
+        memory: 2048
+        cores: 2
+        # disk:
+        #   virtio0: "local-lvm:10,format=qcow2"
+        ostype: l26
+        cicustom: "user=local:snippets/{{ item.name }}-user-data.yml"
+        onboot: false
+        state: present
+      loop: "{{ vms }}"
+
+    - name: Delete cloud-init snippets for security
+      ansible.builtin.file:
+        path: "/var/lib/vz/snippets/{{ item.name }}-user-data.yml"
+        state: absent
+      loop: "{{ vms }}"

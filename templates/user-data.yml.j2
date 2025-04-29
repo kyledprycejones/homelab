@@ -1,0 +1,16 @@
+#cloud-config
+hostname: {{ item.name }}
+fqdn: {{ item.name }}{{ domain_name }}
+timezone: {{ timezone }}
+locale: {{ locale }}
+users:
+  - name: ansible
+    ssh-authorized-keys:
+      - {{ lookup('file', ansible_key_file) }}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+packages:
+  - qemu-guest-agent
+  - ufw
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent

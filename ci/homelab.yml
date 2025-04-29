@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: home-assistant
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://charts.home-assistant.io
+    chart: home-assistant
+    targetRevision: 14.4.0
+    helm:
+      values: |
+        persistence:
+          config:
+            enabled: true
+            storageClass: ""
+            size: 5Gi
+        ingress:
+          enabled: true
+          ingressClassName: nginx
+          hosts:
+            - host: homeassistant.homelab.local
+              paths:
+                - path: /
+                  pathType: Prefix
+          tls: []
+        service:
+          type: ClusterIP
+          port: 8123
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: home-assistant
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true`
