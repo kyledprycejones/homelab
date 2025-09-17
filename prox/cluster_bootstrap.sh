@@ -24,6 +24,10 @@ GIT_REPO="${GIT_REPO:-https://github.com/kyledprycejones/homelab}"
 # Use the default repo branch unless overridden
 GIT_BRANCH="${GIT_BRANCH:-main}"
 
+# Helm repo defaults
+ONEDROP_HELM_HOST="${ONEDROP_HELM_HOST:-onedr0p.github.io}"
+ONEDROP_HELM_REPO="${ONEDROP_HELM_REPO:-https://onedr0p.github.io/helm-charts}"
+
 # Cloudflare tunnel
 CF_REPLICAS=${CF_REPLICAS:-2}
 
@@ -193,12 +197,13 @@ check_connectivity() {
 dns_preflight_host() {
   say "DNS preflight: validating external name resolution on control-plane host"
   # Try multiple tools on the host to resolve a well-known domain
-  if ! ssh_do "$CTRL_IP" "getent hosts onedr0p.github.io >/dev/null 2>&1 || resolvectl query onedr0p.github.io >/dev/null 2>&1 || nslookup onedr0p.github.io >/dev/null 2>&1"; then
-    echo "ERROR: Control-plane host cannot resolve external domains (e.g., onedr0p.github.io)." >&2
+  local repo_host="$ONEDROP_HELM_HOST"
+  if ! ssh_do "$CTRL_IP" "getent hosts ${repo_host} >/dev/null 2>&1 || resolvectl query ${repo_host} >/dev/null 2>&1 || nslookup ${repo_host} >/dev/null 2>&1"; then
+    echo "ERROR: Control-plane host cannot resolve external domains (e.g., ${repo_host})." >&2
     echo "Fix the host's DNS (systemd-resolved or netplan). Example for systemd-resolved:" >&2
     echo "  sudo mkdir -p /etc/systemd/resolved.conf.d" >&2
     echo "  printf '[Resolve]\nDNS=1.1.1.1 1.0.0.1 8.8.8.8\nDomains=~.\n' | sudo tee /etc/systemd/resolved.conf.d/10-public.conf" >&2
-    echo "  sudo systemctl restart systemd-resolved && resolvectl query onedr0p.github.io" >&2
+    echo "  sudo systemctl restart systemd-resolved && resolvectl query ${repo_host}" >&2
     exit 1
   fi
 }
@@ -1218,7 +1223,7 @@ EOF
     fi
   '"
   # Quick DNS sanity check from within cluster (best-effort)
-  kctl "kubectl -n argocd run dnscheck --rm -i --restart=Never --image=busybox:1.36 -- nslookup onedr0p.github.io || true"
+  kctl "kubectl -n argocd run dnscheck --rm -i --restart=Never --image=busybox:1.36 -- nslookup ${ONEDROP_HELM_HOST} || true"
   # Make sure Argo CD Application CRD is present before applying any Applications
   kctl "bash -lc 'for i in {1..60}; do kubectl get crd applications.argoproj.io >/dev/null 2>&1 && break || sleep 2; done'"
   kctl "kubectl apply --validate=false -f - <<EOF
@@ -1468,7 +1473,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://onedr0p.github.io/helm-charts
+    repoURL: ${ONEDROP_HELM_REPO}
     chart: jellyfin
     targetRevision: 6.0.0
     helm:
@@ -1516,7 +1521,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://onedr0p.github.io/helm-charts
+    repoURL: ${ONEDROP_HELM_REPO}
     chart: overseerr
     targetRevision: 2.0.0
     helm:
