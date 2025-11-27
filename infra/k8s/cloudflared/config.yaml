@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+  namespace: cloudflared
+data:
+  config.yaml: |
+    ingress:
+      - hostname: grafana.funoffshore.com
+        service: http://monitoring-grafana.monitoring.svc.cluster.local:80
+      - hostname: prometheus.funoffshore.com
+        service: http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+
+      # Additional routes must be added explicitly when requested.
+      # Example template (AI-editable when instructed):
+      # - hostname: jellyfin.funoffshore.com
+      #   service: http://jellyfin.media.svc.cluster.local:8096
+
+      - service: http_status:404

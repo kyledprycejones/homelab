@@ -1,0 +1,17 @@
+# Environment / secrets
+config/env/
+!config/env/.env.example
+*.env
+
+# Logs / artifacts
+logs/
+*.log
+
+# OS cruft
+.DS_Store
+._*
+
+# UI log viewer outputs
+ui/logs/public/log_index.json
+ui/logs/public/logs/*
+!ui/logs/public/logs/.gitkeep

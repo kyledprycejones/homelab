@@ -17,6 +17,18 @@ TEMPLATE_NAME="chatgpt-build"
 BRIDGE="vmbr0"
 DISK_SIZE_GB=20
 
+VM_MEMORY_MB=4096
+VM_BALLOON_MIN_MB=2048
+VM_SWAPFILE_SIZE_GB=4
+VM_ZRAM_PERCENT=25
+VM_ZRAM_MAX_MB=4096
+VM_SYSCTL_SWAPPINESS=80
+K3S_EVICTION_HARD="memory.available<500Mi,nodefs.available<5%,imagefs.available<5%"
+K3S_EVICTION_SOFT="memory.available<1Gi,nodefs.available<10%,imagefs.available<10%"
+K3S_EVICTION_SOFT_GRACE="memory.available=120s,nodefs.available=5m,imagefs.available=5m"
+K3S_KUBE_RESERVED="cpu=250m,memory=256Mi"
+K3S_SYSTEM_RESERVED="cpu=250m,memory=256Mi"
+
 CI_USER="kyle"
 CI_PASS="root"
 
@@ -33,6 +45,11 @@ IP_101="192.168.1.151/24"
 IP_102="192.168.1.152/24"
 IP_103="192.168.1.153/24"
 GW="192.168.1.1"
+
+if (( VM_BALLOON_MIN_MB > VM_MEMORY_MB )); then
+  echo "ERROR: VM_BALLOON_MIN_MB (${VM_BALLOON_MIN_MB}) cannot exceed VM_MEMORY_MB (${VM_MEMORY_MB})."
+  exit 1
+fi
 
 ### ====== HELPERS ======
 say(){ echo -e "\n== $* =="; }
@@ -59,9 +76,8 @@ fi
 pvesm set "${NFS_STORAGE}" --content images,iso,backup,vztmpl,rootdir,snippets >/dev/null
 mkdir -p "${NFS_MOUNT}/snippets" "${ISO_DIR}"
 
-if [ ! -f "${SNIPPET_PATH}" ]; then
-  say "Creating cloud-init snippet ${SNIPPET_PATH}"
-  cat > "${SNIPPET_PATH}" <<EOF
+say "Rendering cloud-init snippet ${SNIPPET_PATH}"
+cat > "${SNIPPET_PATH}" <<EOF
 #cloud-config
 users:
   - name: ${CI_USER}
@@ -72,11 +88,77 @@ chpasswd:
   expire: false
   list: |
     ${CI_USER}:${CI_PASS}
+package_update: true
+packages:
+  - systemd-zram-generator
+write_files:
+  - path: /usr/local/bin/configure-memory.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      swap_file="/swapfile"
+      swap_size="${VM_SWAPFILE_SIZE_GB}G"
+
+      if [ ! -f "\${swap_file}" ]; then
+        fallocate -l "\${swap_size}" "\${swap_file}"
+        chmod 600 "\${swap_file}"
+        mkswap "\${swap_file}"
+      fi
+
+      if ! grep -q "^/swapfile " /etc/fstab; then
+        printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
+      fi
+
+      swapon -a || true
+
+      sysctl --system || true
+
+      systemctl daemon-reload
+      if systemctl list-unit-files | grep -q '^systemd-zram-setup@'; then
+        systemctl enable --now systemd-zram-setup@zram0.service || true
+      elif systemctl list-unit-files | grep -q '^dev-zram0.swap'; then
+        systemctl start dev-zram0.swap || true
+      fi
+
+  - path: /etc/systemd/zram-generator.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [zram0]
+      zram-size = min(ram * ${VM_ZRAM_PERCENT} / 100, ${VM_ZRAM_MAX_MB}M)
+      compression-algorithm = zstd
+      swap-priority = 100
+
+  - path: /etc/sysctl.d/99-k8s-memory.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      vm.swappiness=${VM_SYSCTL_SWAPPINESS}
+      vm.panic_on_oom=0
+      vm.overcommit_memory=1
+      kernel.panic=10
+      kernel.panic_on_oops=1
+
+  - path: /etc/rancher/k3s/config.yaml
+    owner: root:root
+    permissions: '0644'
+    content: |
+      kubelet-arg:
+        - fail-swap-on=false
+        - eviction-hard=${K3S_EVICTION_HARD}
+        - eviction-soft=${K3S_EVICTION_SOFT}
+        - eviction-soft-grace-period=${K3S_EVICTION_SOFT_GRACE}
+        - eviction-max-pod-grace-period=60
+        - kube-reserved=${K3S_KUBE_RESERVED}
+        - system-reserved=${K3S_SYSTEM_RESERVED}
+
+runcmd:
+  - /usr/local/bin/configure-memory.sh
 EOF
-  chmod 644 "${SNIPPET_PATH}"
-else
-  say "Snippet already present at ${SNIPPET_PATH}"
-fi
+chmod 644 "${SNIPPET_PATH}"
 
 ### ====== ISO & cloud image ======
 if [ ! -f "${ISO_DIR}/${ISO_NAME}" ]; then
@@ -97,7 +179,7 @@ fi
 ### ====== Template create/update ======
 if ! vm_exists "${TEMPLATE_VMID}"; then
   say "Creating VM ${TEMPLATE_VMID} (${TEMPLATE_NAME}) from cloud image..."
-  qm create "${TEMPLATE_VMID}" --name "${TEMPLATE_NAME}" --memory 2048 --cores 2 --net0 "virtio,bridge=${BRIDGE}" --ostype l26 --agent enabled=1
+  qm create "${TEMPLATE_VMID}" --name "${TEMPLATE_NAME}" --memory "${VM_MEMORY_MB}" --cores 2 --net0 "virtio,bridge=${BRIDGE}" --ostype l26 --agent enabled=1
 
   say "Importing cloud image as scsi0"
   qm importdisk "${TEMPLATE_VMID}" "${CLOUD_IMG_LOCAL}" "${NFS_STORAGE}" >/dev/null
@@ -109,6 +191,7 @@ if ! vm_exists "${TEMPLATE_VMID}"; then
 
   qm set "${TEMPLATE_VMID}" --ciuser "${CI_USER}" --cipassword "${CI_PASS}"
   qm set "${TEMPLATE_VMID}" -cicustom "user=${SNIPPET_VOL}"
+  qm set "${TEMPLATE_VMID}" --balloon "${VM_BALLOON_MIN_MB}" --hotplug disk,network,usb
 
   qm resize "${TEMPLATE_VMID}" scsi0 "+$((DISK_SIZE_GB - 3))G" || true
 
@@ -116,17 +199,20 @@ if ! vm_exists "${TEMPLATE_VMID}"; then
   say "Template ${TEMPLATE_VMID} ready."
 else
   say "Template VMID ${TEMPLATE_VMID} exists; enforcing config."
-  qm set "${TEMPLATE_VMID}" --name "${TEMPLATE_NAME}" --memory 2048 --cores 2 --net0 "virtio,bridge=${BRIDGE}" --ostype l26 --agent enabled=1
+  qm set "${TEMPLATE_VMID}" --name "${TEMPLATE_NAME}" --memory "${VM_MEMORY_MB}" --cores 2 --net0 "virtio,bridge=${BRIDGE}" --ostype l26 --agent enabled=1
   if ! qm config "${TEMPLATE_VMID}" | grep -q "^scsi0:"; then
     say "scsi0 missing—importing OS disk from ${CLOUD_IMG_LOCAL}..."
     qm importdisk "${TEMPLATE_VMID}" "${CLOUD_IMG_LOCAL}" "${NFS_STORAGE}" >/dev/null
     attach_imported_disk "${TEMPLATE_VMID}"
   fi
-  qm set "${TEMPLATE_VMID}" --ide2 "${NFS_STORAGE}:cloudinit,media=cdrom"
+  if ! qm config "${TEMPLATE_VMID}" | grep -q '^ide2:.*cloudinit'; then
+    qm set "${TEMPLATE_VMID}" --ide2 "${NFS_STORAGE}:cloudinit,media=cdrom"
+  fi
   qm set "${TEMPLATE_VMID}" --boot order=scsi0 --bootdisk scsi0
   qm set "${TEMPLATE_VMID}" --serial0 socket --vga std
   qm set "${TEMPLATE_VMID}" --ciuser "${CI_USER}" --cipassword "${CI_PASS}"
   qm set "${TEMPLATE_VMID}" -cicustom "user=${SNIPPET_VOL}"
+  qm set "${TEMPLATE_VMID}" --balloon "${VM_BALLOON_MIN_MB}" --hotplug disk,network,usb
   if ! qm config "${TEMPLATE_VMID}" | grep -q "^template:"; then
     qm template "${TEMPLATE_VMID}"
   fi
@@ -151,6 +237,7 @@ recreate_vm () {
   qm set "${id}" -cicustom "user=${SNIPPET_VOL}"
   qm set "${id}" --boot order=scsi0 --bootdisk scsi0
   qm set "${id}" --serial0 socket --vga std
+  qm set "${id}" --memory "${VM_MEMORY_MB}" --balloon "${VM_BALLOON_MIN_MB}" --hotplug disk,network,usb
 
   qm cloudinit update "${id}"
   qm start "${id}"

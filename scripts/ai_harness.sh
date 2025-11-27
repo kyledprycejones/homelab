@@ -68,7 +68,7 @@ if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; th
   fi
 fi
 if [ -z "$detected_branch" ]; then
-  detected_branch="master"
+  detected_branch="main"
 fi
 
 select_branch() {

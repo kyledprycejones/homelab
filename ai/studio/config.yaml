@@ -1,0 +1,72 @@
+{
+  "llms": {
+    "local": {
+      "provider": "ollama",
+      "models": ["qwen2.5-coder:7b", "deepseek-coder"]
+    },
+    "remote": {
+      "openai": {
+        "enabled": false,
+        "model": "chatgpt-mini"
+      }
+    }
+  },
+  "persona_models": {
+    "architect": {
+      "tier": "high",
+      "llm": "remote.openai",
+      "model": "chatgpt-mini"
+    },
+    "narrative": {
+      "tier": "high",
+      "llm": "remote.openai",
+      "model": "chatgpt-mini"
+    },
+    "orchestrator": {
+      "tier": "balanced",
+      "llm": "remote.openai",
+      "model": "chatgpt-mini"
+    },
+    "junior": {
+      "tier": "local",
+      "llm": "local.ollama",
+      "model": "qwen2.5-coder:7b"
+    },
+    "hands": {
+      "tier": "local",
+      "llm": "local.ollama",
+      "model": "deepseek-coder"
+    }
+  },
+  "agents": {
+    "pm": {
+      "role": "product manager",
+      "tools": ["shell", "fs", "git"]
+    },
+    "architect": {
+      "role": "system architect",
+      "tools": ["fs", "git"]
+    },
+    "engineer": {
+      "role": "software engineer",
+      "tools": ["shell", "fs", "git"]
+    },
+    "marketer": {
+      "role": "marketing/launch",
+      "tools": ["fs"]
+    },
+    "researcher": {
+      "role": "research/analysis",
+      "tools": ["fs", "shell"]
+    }
+  },
+  "tools": {
+    "shell": "allow-local-shell",
+    "fs": "allow-file-read-write",
+    "git": "allow-git-ops"
+  },
+  "defaults": {
+    "llm": "local",
+    "temperature": 0.3
+  }
+}

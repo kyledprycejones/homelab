@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minecraft-server
+  namespace: games
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minecraft
+  template:
+    metadata:
+      labels:
+        app: minecraft
+    spec:
+      containers:
+        - name: minecraft
+          image: itzg/minecraft-server:latest
+          ports:
+            - containerPort: 25565
+              name: mc
+          env:
+            - name: EULA
+              value: "TRUE"
+            - name: MEMORY
+              value: 2G
+            - name: VERSION
+              value: "LATEST"
+            - name: TZ
+              value: UTC
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minecraft-data

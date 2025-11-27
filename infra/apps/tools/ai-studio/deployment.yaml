@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-studio
+  namespace: tools
+  annotations:
+    placeholder: "true"
+spec:
+  replicas: 0  # placeholder; set to >0 when ready to run
+  selector:
+    matchLabels:
+      app: ai-studio
+  template:
+    metadata:
+      labels:
+        app: ai-studio
+    spec:
+      containers:
+        - name: ai-studio
+          image: python:3.11-slim
+          command: ["sleep", "3600"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

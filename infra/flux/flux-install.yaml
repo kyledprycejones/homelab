@@ -1,0 +1,2 @@
+# Flux is installed by prox/cluster_bootstrap.sh (stage_gitops).
+# Add shared Flux configuration/manifests here (GitRepositories, Kustomizations, customization defaults).
