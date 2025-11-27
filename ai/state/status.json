@@ -1,7 +1,13 @@
 {
   "persona": "junior",
-  "task": "Biz2 R&D pipeline",
-  "iteration": 3,
+  "task": "Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)",
+  "iteration": 1,
   "last_exit_reason": "in_progress",
-  "timestamp": "2025-11-27T12:56:50Z"
+  "last_run_id": "2025-11-27T16:23:49Z",
+  "timestamp": "2025-11-27T16:23:49Z",
+  "stage": "stage_1",
+  "stage_1_complete": false,
+  "stage_2_unlocked": false,
+  "needs_human": false,
+  "question": ""
 }

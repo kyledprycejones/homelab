@@ -161,6 +161,7 @@ done
 
 cmd="${env_string}/tmp/cluster_bootstrap.sh"
 timestamp="$(date +%Y%m%d-%H%M%S)"
+run_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 log_file="logs/${CLUSTER}-${STAGE}-${timestamp}.log"
 latest_stage_link="logs/latest-${CLUSTER}-${STAGE}.log"
 latest_cluster_link="logs/latest-${CLUSTER}.log"
@@ -190,4 +191,19 @@ ln -sf "$log_file" "$latest_global_link"
 
 echo "Log symlinks: stage=$latest_stage_link cluster=$latest_cluster_link latest=$latest_global_link"
 echo "HARNESS_END exit=${run_rc} log=${log_file}"
+
+# Generate a compact run summary for observability.
+scripts/executor/run_summary.py \
+  --run-id "$run_iso" \
+  --run-label "$timestamp" \
+  --log-file "$log_file" \
+  --target "$CLUSTER" \
+  --component "ai_harness" \
+  --stage "stage_1" \
+  --exit-code "$run_rc" \
+  --status-file "ai/state/status.json" \
+  --backlog-file "ai/backlog.md" \
+  --last-run-file "ai/state/last_run.log" \
+  --summary-limit 5 || true
+
 exit "${run_rc}"

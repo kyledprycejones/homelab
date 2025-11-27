@@ -1,85 +1,20 @@
-=== Funoffshore Orchestrator Run ===
-Cluster: prox-n100 | Stage: orchestrator | CWD: /Users/kyle/Documents/repos/homelab | Time: 2025-11-27T12:56:50Z
-
-Persona: Junior | Task: Biz2 R&D pipeline | Iteration: 3 | Last exit reason: in_progress
-
-Objective: Advance the Biz2 R&D pipeline by standing up at least one concrete manual news digest using the existing templates and memory schema, then reflect that progress in the Biz2 scaffolding checklist and orchestrator state.
-
-Allowed paths for this run:
-- ai/studio/**
-- ai/backlog.md
-- ai/state/status.json
-- ai/state/last_run.log
-- ai/state/human_approvals.md
-- ui/logs/public
-
-State + backlog review commands:
-$ date -u '+%Y-%m-%d %H:%M UTC'
-(Used to timestamp the orchestrator run header.)
-
-$ cat ai/company.md
-(Reviewed personas, escalation paths, red-line areas, and allowed SSH hosts.)
-
-$ cat ai/backlog.md
-(Confirmed global backlog: Immediate and Short-Term sections fully checked; under Future, the first unchecked item remains "Biz2 R&D pipeline".)
-
-$ cat ai/state/status.json
-(Previous state: persona=junior, task="Biz2 R&D pipeline", iteration=2, last_exit_reason="in_progress".)
-
-$ cat ai/state/human_approvals.md
-(Three pending approvals unchanged: Cloudflare tunnel, DNS record, node reboot.)
-
-$ cat ai/state/last_run.log
-(Reviewed prior Junior run that wired Biz2 workflows, templates, memory schema, and CLI logging; confirmed Biz2 scaffolding is in place but the pipeline is still marked in progress.)
-
-Biz2 context review:
-$ cat ai/studio/backlog.md
-(Verified Biz2 Scaffolding section is fully [x]; Experiment Ideas remain [ ].)
-
-$ sed -n '1,260p' ai/studio/projects/biz2/README.md
-(Refreshed Biz2 charter, outcomes, guardrails, milestones, and dependencies; confirmed focus on local-first AI Studio under ai/studio/.)
-
-$ sed -n '1,260p' ai/studio/projects/biz2/scaffolding_checklist.md
-(Located remaining unchecked items: manual news digest capture, ai_studio.sh helper, logging guidelines, graduation gates.)
-
-$ sed -n '1,260p' ai/studio/news_digest/daily_digest_template.md
-(Reviewed the daily digest template, including slug format `biz2-digest-YYYYMMDD` and references to memory/news and reports/research.)
-
-Implementation – first manual news digest:
-$ apply_patch (add ai/studio/memory/news/20251127-1200Z-homelab-ai-roundup.md)
-- Created a timestamped raw news note in memory/news with minimal YAML frontmatter and three bullets summarizing current Biz2/Homelab AI context.
-
-$ apply_patch (add ai/studio/news_digest/biz2-digest-20251127.md)
-- Instantiated the daily digest template into a concrete file named after the slug `biz2-digest-20251127`.
-- Linked back to the raw memory/news file and captured a short summary plus next steps for future digests.
-
-Checklist update:
-$ apply_patch (update ai/studio/projects/biz2/scaffolding_checklist.md)
-- Marked the Data + Memory item "Capture at least one manual news digest in news_digest/" as [x] now that a concrete digest file exists.
-
-State updates:
-$ date -u +%Y-%m-%dT%H:%M:%SZ
-(Captured ISO8601 timestamp 2025-11-27T12:56:50Z for status.json.)
-
-$ apply_patch (update ai/state/status.json)
-- Set persona=junior, task="Biz2 R&D pipeline", iteration=3.
-- Kept last_exit_reason="in_progress" since several Biz2 checklist items (ops tooling and graduation gates) remain open.
-- Updated timestamp to 2025-11-27T12:56:50Z.
-
-Git operations (sandboxed):
-$ git status -sb
-(Showed modified ai/state files and many tracked/untracked paths from prior work, including ai/studio/; repository is still dirty.)
-
-$ git add -A
-(Failed with `fatal: Unable to create '.git/index.lock': Operation not permitted` due to sandbox restrictions on .git writes.)
-
-$ git commit -m "orchestrator: Junior Biz2 manual digest"
-(Failed with the same index.lock permission error; no new commit created.)
-
-$ git push
-(Failed with `Could not resolve host: github.com`, expected under restricted networking and absent new commit.)
-
-Net effect:
-- Biz2 now has a concrete example of the news memory + digest flow: one raw note under memory/news and one corresponding digest under news_digest using the agreed naming convention.
-- The Biz2 scaffolding checklist reflects this progress with the manual news digest item checked off, while other Biz2 R&D pipeline tasks remain open for future loops.
-- Orchestrator state has been updated to iteration=3 with last_exit_reason="in_progress"; git commit/push remain blocked by sandbox restrictions.
+=== Funoffshore CLI Loop Summary ===
+Run ID: 2025-11-27T16:41:06Z
+Target: prox-n100
+Stage: stage_1
+Tasks attempted:
+  - Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)
+Backlog items:
+  - [ ] Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)
+  - [ ] Ingress / Traefik wiring for sample apps
+  - [ ] Monitoring stack (Prometheus / Grafana / Loki) scaffolding
+  - [ ] Sample media apps (Arrs, Jellyfin, qBittorrent, etc.) manifests
+  - [ ] Observability/logging stability for CLI loops
+Result: partial_success
+What was done:
+  - See logs for details.
+Where it got stuck:
+  - n/a
+Suggested next step:
+  - Review backlog and rerun if needed.
+Logs: logs/ai/orchestrator-20251127-164106.log

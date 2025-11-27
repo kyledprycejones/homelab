@@ -16,6 +16,8 @@ Stage 1 — Homelab Completion & Sample Applications
 Goal: A fully reproducible and stable Kubernetes/Proxmox-based cluster.
 Business experimentation is not allowed until Stage 1 is completed.
 
+- [ ] Stage 1 complete (set by human/CLI when GitOps manifests + postcheck succeed)
+
 Stage 1 Requirements
 
 1. Cluster Foundation
@@ -69,6 +71,8 @@ Stage 2 — Multi-Agent Biz Engine (Biz2/Biz3)
 
 Unlocked only when Stage 1 is complete.
 
+- [ ] Stage 2 unlocked (set by human after verifying Stage 1 completion)
+
 Stage 2 Goals
 	•	Multi-agent runtime inside ai/studio
 	•	Workflow system (daily digest, prototype loop, opportunity scans)
@@ -77,6 +81,6 @@ Stage 2 Goals
 	•	Data stored under ai/studio/memory, reports, news_digest
 
 Stage gating rule:
-The Orchestrator cannot initiate Biz2/Biz3 workflows until Stage 1 completion is confirmed (presence of all Stage 1 GitOps components and a cluster health check).
+The Orchestrator cannot initiate Biz2/Biz3 workflows until Stage 1 completion is confirmed (presence of all Stage 1 GitOps components and a cluster health check) and marked via the Stage 1 checkbox or `stage_1_complete` flag in `ai/state/status.json`.
 
 END OF MISSION STATEMENT

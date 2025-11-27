@@ -26,3 +26,4 @@ SUMMARY:
 - Keep all raw stdout/stderr inside `ai/state/last_run.log`, not in stdout.
 - If a command fails hard, append the error snippet to `logs/ai/hands-<timestamp>.log` for later debugging.
 - Update `ai/state/status.json`, `ai/backlog.md`, and `ai/state/human_approvals.md` before exiting.
+- Git fetch/pull/checkout/add/push are blocked in this sandbox; stick to file edits and at most `git status -sb`.

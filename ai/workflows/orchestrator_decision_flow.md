@@ -3,18 +3,18 @@
 This guide mirrors `ai/agents/orchestrator.md` but condenses it into a checklist. Use it to keep each Codex loop scoped, terse, and on objective.
 
 ## 1. Context sweep (minimum read)
-1. `ai/mission.md` (only the sections relevant to the chosen task/stage)
-2. `ai/company.md`
-3. `ai/backlog.md`
-4. `ai/state/status.json`
-5. `ai/state/human_approvals.md`
-6. Most recent relevant log (`ai/state/last_run.log` or targeted file under `logs/ai/`)
+1. `ai/mission.md` (Stage 1 vs Stage 2, completion checkboxes)
+2. `ai/backlog.md` (Stage 1 only until unlocked)
+3. `ai/state/status.json` (stage, needs_human, question)
+4. `ai/state/human_approvals.md`
+5. Most recent relevant log (`ai/state/last_run.log` or targeted file under `logs/ai/`)
 
 Skip everything else unless the backlog item explicitly cites it.
 
 ## 2. Task + mode
-- Pick the first unchecked backlog item under `## Immediate`. Move to `## Short-Term` only when Immediate is empty.
-- Determine mission stage: Stage 1 (homelab) is mandatory until its requirements are proven complete (GitOps manifests present + recent cluster postcheck success). Refuse Biz2/Biz3 tasks until the Architect confirms the unlock.
+- Run `scripts/executor/stage1_backlog_sync.py` to refresh Stage 1 backlog items from repo state.
+- Pick the first unchecked backlog item under `Stage 1 – Homelab Bring-Up`. Ignore Stage 2/Biz2/Biz3 items until Stage 1 is explicitly unlocked.
+- Determine mission stage: Stage 1 (homelab) is mandatory until its requirements are proven complete (GitOps manifests present + recent cluster postcheck success and `stage_1_complete` true). Refuse Biz2/Biz3 tasks until the Architect confirms the unlock.
 - Determine mode + `allowed_paths` (Hands must stay inside; Junior prefers them but may expand when needed and note it in the summary):
 
 | Mode trigger | Allowed paths |
@@ -58,13 +58,14 @@ SUMMARY:
 
 Nothing else belongs in stdout. Raw command transcripts live only in `ai/state/last_run.log`. Narrative logs are written later by the Narrative persona.
 
-## 6. State + git updates
+## 6. State updates
 - `ai/state/status.json` – persona, task, iteration, timestamp, `last_exit_reason`.
 - `ai/backlog.md` – mark `[x]` on success only.
 - `ai/state/last_run.log` – full technical transcript (commands, stdout/stderr, context notes).
 - `ai/state/human_approvals.md` – append pending approvals and pause if blocked.
 - `logs/ai/hands-<timestamp>.log` – only when Hands records a failure.
-- Git – if files changed, `git add -A`, `git commit -m "orchestrator: <persona> <short summary>"`, `git push`.
+
+Git ops (fetch/pull/checkout/add/push) are sandbox-blocked; treat git internals as read-only. If needed, a single `git status -sb` is acceptable, but focus on file edits.
 
 ## 7. Exit reasons
 - `success` – task complete; backlog checked.
@@ -73,11 +74,7 @@ Nothing else belongs in stdout. Raw command transcripts live only in `ai/state/l
 - `error` – unexpected failure recorded; next run picks up from the same task/iteration.
 
 ## 8. Git workflow (AI)
-1. `git fetch --all --prune` and `git checkout main && git pull` before editing.
-2. For feature work, create a branch named `ai/<short-purpose>-<yyyymmdd>` and base it on `main`.
-3. Keep changes scoped to mission-allowed directories. No edits to `config/env/` or human-only manifests.
-4. `git add -A`, write descriptive commits, and push the branch (`git push -u origin ai/<slug>-<date>`).
-5. Open a PR into `main` summarizing the task and files touched. Human/automation merges it.
-6. Never push directly to `main` unless a human explicitly calls for a hotfix.
+- Skip git fetch/pull/checkout/add/push; sandbox forbids git internals.
+- Assume current working tree; no branching/PRs from here. Humans handle commits/pushes outside the sandbox.
 
 Keep this checklist open next to the orchestrator prompt so each loop stays lean and predictable.

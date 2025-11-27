@@ -2,40 +2,45 @@
   "llms": {
     "local": {
       "provider": "ollama",
-      "models": ["qwen2.5-coder:7b", "deepseek-coder"]
+      "models": ["qwen2:7b", "deepseek-coder:6.7b"],
+      "default": "qwen2:7b"
     },
     "remote": {
       "openai": {
         "enabled": false,
-        "model": "chatgpt-mini"
+        "model": "gpt-4o-mini",
+        "requires_env": "OPENAI_API_KEY"
       }
     }
   },
   "persona_models": {
     "architect": {
       "tier": "high",
-      "llm": "remote.openai",
-      "model": "chatgpt-mini"
+      "llm": "local.ollama",
+      "model": "qwen2:7b",
+      "remote_fallback": "remote.openai"
     },
     "narrative": {
       "tier": "high",
-      "llm": "remote.openai",
-      "model": "chatgpt-mini"
+      "llm": "local.ollama",
+      "model": "qwen2:7b",
+      "remote_fallback": "remote.openai"
     },
     "orchestrator": {
       "tier": "balanced",
-      "llm": "remote.openai",
-      "model": "chatgpt-mini"
+      "llm": "local.ollama",
+      "model": "qwen2:7b",
+      "remote_fallback": "remote.openai"
     },
     "junior": {
       "tier": "local",
       "llm": "local.ollama",
-      "model": "qwen2.5-coder:7b"
+      "model": "qwen2:7b"
     },
     "hands": {
       "tier": "local",
       "llm": "local.ollama",
-      "model": "deepseek-coder"
+      "model": "deepseek-coder:6.7b"
     }
   },
   "agents": {
@@ -66,7 +71,7 @@
     "git": "allow-git-ops"
   },
   "defaults": {
-    "llm": "local",
+    "llm": "local.ollama",
     "temperature": 0.3
   }
 }
