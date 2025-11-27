@@ -1,0 +1,39 @@
+=== Funoffshore Orchestrator Run ===
+Cluster: prox-n100 | Stage: postcheck | CWD: /Users/kyle/Documents/repos/homelab | Time: 2025-11-27T00:37:50Z
+
+Persona: Hands | Task: Fix Flux GIT_BRANCH incorrect reference | Iteration: 2
+
+Planned steps:
+1. Re-verify repo state for Flux GIT_BRANCH handling.
+2. Update backlog/status/logs to capture completion.
+3. Stage/commit/push any resulting changes.
+
+Execution trace:
+-- Context review --
+$ cat ai/company.md
+$ cat ai/backlog.md
+$ cat ai/state/status.json
+$ cat ai/state/human_approvals.md
+$ ls logs/ai
+$ cat logs/ai/orchestrator-20251127-003515.log
+
+-- Repo validation --
+$ rg -n "GIT_BRANCH"
+$ sed -n '1,200p' scripts/ai_harness.sh
+$ sed -n '1,200p' prox/cluster_bootstrap.sh
+$ sed -n '520,620p' prox/cluster_bootstrap.sh
+$ git status -sb
+
+Observation: harness now auto-detects the local git branch and propagates it via env vars to cluster_bootstrap.sh, ensuring Flux GitRepository uses the correct branch. Backlog still showed item unchecked, so marking complete this run.
+
+-- Backlog + state updates --
+$ apply_patch (ai/backlog.md) -> mark Fix Flux GIT_BRANCH incorrect reference as complete.
+$ apply_patch (ai/state/status.json) -> persona=hands, task iteration=2, last_exit_reason=success, timestamp=2025-11-27T00:37:50Z.
+$ cat <<EOF > ai/state/last_run.log (this log).
+
+-- Git status --
+$ git status -sb
+
+Result: Verified Flux branch handling, updated backlog/state/log accordingly. Next immediate task in backlog is Get bootstrap loop stable (POSTCHECK_FLUX_OK=1).
+
+last_exit_reason=success
