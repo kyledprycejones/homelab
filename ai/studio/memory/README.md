@@ -19,7 +19,7 @@ You can add more subdirectories as needed, but keep names human-readable and sco
 - `title`: short, human-friendly label.
 - `slug`: filesystem-safe identifier (`biz2-digest-2025-01-01`).
 - `date`: ISO8601 timestamp (`2025-01-01T12:00:00Z`).
-- `owner`: who drove the work ("hands", "junior", or a real name).
+- `owner`: who drove the work ("executor", "engineer", or a real name).
 - `tags`: list like `["biz2", "digest", "infra"]`.
 - `status`: e.g. `draft`, `in_progress`, `final`.
 
@@ -35,4 +35,3 @@ You can add more subdirectories as needed, but keep names human-readable and sco
 - Avoid storing secrets, tokens, or private customer data here.
 
 If a file feels sensitive or long-lived, link to it from a report in `reports/` instead of pasting the full contents.
-

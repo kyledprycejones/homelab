@@ -1,20 +1,17 @@
 === Funoffshore CLI Loop Summary ===
-Run ID: 2025-11-27T16:41:06Z
+Run ID: 2025-11-28T18:21:36Z
 Target: prox-n100
 Stage: stage_1
 Tasks attempted:
   - Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)
 Backlog items:
-  - [ ] Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)
-  - [ ] Ingress / Traefik wiring for sample apps
-  - [ ] Monitoring stack (Prometheus / Grafana / Loki) scaffolding
-  - [ ] Sample media apps (Arrs, Jellyfin, qBittorrent, etc.) manifests
-  - [ ] Observability/logging stability for CLI loops
+  (none found)
 Result: partial_success
 What was done:
   - See logs for details.
 Where it got stuck:
-  - n/a
+  - ERROR: Stage k3s failed at line 529 (exit=1). Check the harness log for details.
 Suggested next step:
-  - Review backlog and rerun if needed.
-Logs: logs/ai/orchestrator-20251127-164106.log
+  - Check log and rerun.
+Logs: logs/prox-n100-all-20251128-132136.log
+[20251128-182134] S1-001-RUN failed rc=1

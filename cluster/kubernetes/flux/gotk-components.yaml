@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flux-system
+---
+# Flux controllers are installed by scripts/bootstrap_cluster.sh or flux CLI bootstrap.
+# This placeholder ensures the namespace exists for GitOps objects defined in gotk-sync.yaml.

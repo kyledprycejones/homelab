@@ -16,7 +16,7 @@ REPORTS_DIR = Path(__file__).parent / "reports"
 WORKFLOW_SUMMARIES: Dict[str, str] = {
     "overview": "Prints charter summary and available scaffolding tasks.",
     "daily_digest": "Runs (placeholder) digest steps – see workflows/daily_digest.*",
-    "prototype_loop": "Outlines PM→Architect→Engineer→Researcher→Marketer hand-off.",
+    "prototype_loop": "Outlines PM→Planner→Engineer→Researcher→Marketer hand-off.",
 }
 
 
@@ -66,7 +66,7 @@ def _print_daily_digest_stub():
 
 def _print_prototype_loop_stub():
     print("Prototype loop stub:")
-    print("  PM -> Architect -> Engineer -> Researcher -> Marketer")
+    print("  PM -> Planner -> Engineer -> Researcher -> Marketer")
     print("  Use memory/experiments/<slug>.md for running notes")
     print("  Publish recap under reports/research/<slug>-recap.md")
 

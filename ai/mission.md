@@ -22,19 +22,19 @@ Stage 1 Requirements
 
 1. Cluster Foundation
 	•	Proxmox host with controller + worker VMs
-	•	Automated K3s bootstrap script
+	•	Automated Talos bootstrap script
 	•	GitOps (Flux or ArgoCD) fully operational
 	•	Networking + DNS + TLS:
 	•	Tailscale
-	•	Cloudflare Tunnel (k3s Deployment + ConfigMap ingress)
+	•	Cloudflare Tunnel (Kubernetes Deployment + ConfigMap ingress)
 	•	Reverse proxy
 	•	Cert-manager / Origin CA
 
 Cloudflare Tunnel Architecture (Stage 1 Scope):
 	•	Secrets (CF_API_TOKEN, CF_TUNNEL_TOKEN, etc.) live only inside `config/env/<cluster>.env` and are never exposed to AI personas.
 	•	Bootstrap/scripts render a Kubernetes Secret (`cloudflared-token`) from `${CF_TUNNEL_TOKEN}`; it is not tracked in Git.
-	•	AI personas may only edit `infra/k8s/cloudflared/config.yaml` (ConfigMap) to add/update ingress routes when asked.
-	•	`infra/k8s/cloudflared/deployment.yaml` and any other manifests remain human-authored; AI must not modify them.
+	•	AI personas may only edit `cluster/kubernetes/platform/ingress/cloudflared/config.yaml` (ConfigMap) to add/update ingress routes when asked.
+	•	`cluster/kubernetes/platform/ingress/cloudflared/deployment.yaml` and any other manifests remain human-authored; AI must not modify them.
 	•	DNS entries are managed manually or via human-run scripts; AI never touches DNS or Cloudflare APIs.
 
 2. Storage

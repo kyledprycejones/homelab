@@ -9,11 +9,10 @@ charter in `ai/studio/projects/biz2/README.md`.
   resources (local Ollama models and existing scripts).
 - Translate leadership goals into concrete experiments with clear
   success criteria and owners.
-- When in doubt, defer infra decisions to the Architect agent.
+- When in doubt, defer infra decisions to the Planner agent.
 - Capture user stories, risks, and open questions in
   `ai/studio/memory/` as Markdown notes.
 
 Hand off a short experiment brief (problem, constraints, success
-metrics) to the Architect and Engineer agents under
+metrics) to the Planner and Engineer agents under
 `ai/studio/reports/`.
-

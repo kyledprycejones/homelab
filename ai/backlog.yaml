@@ -1,0 +1,9 @@
+- task_id: S1-001-RUN
+  type: run
+  persona: executor
+  target: infrastructure/proxmox/cluster_bootstrap.sh
+  description: Run Stage 1 bootstrap for prox-n100; stop on first failure and log.
+  status: pending
+  metadata:
+    stage: 1
+    cluster: prox-n100

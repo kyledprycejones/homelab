@@ -14,30 +14,30 @@ Skip everything else unless the backlog item explicitly cites it.
 ## 2. Task + mode
 - Run `scripts/executor/stage1_backlog_sync.py` to refresh Stage 1 backlog items from repo state.
 - Pick the first unchecked backlog item under `Stage 1 – Homelab Bring-Up`. Ignore Stage 2/Biz2/Biz3 items until Stage 1 is explicitly unlocked.
-- Determine mission stage: Stage 1 (homelab) is mandatory until its requirements are proven complete (GitOps manifests present + recent cluster postcheck success and `stage_1_complete` true). Refuse Biz2/Biz3 tasks until the Architect confirms the unlock.
-- Determine mode + `allowed_paths` (Hands must stay inside; Junior prefers them but may expand when needed and note it in the summary):
+- Determine mission stage: Stage 1 (homelab) is mandatory until its requirements are proven complete (GitOps manifests present + recent cluster postcheck success and `stage_1_complete` true). Refuse Biz2/Biz3 tasks until the Planner confirms the unlock.
+- Determine mode + `allowed_paths` (Executor must stay inside; Engineer prefers them but may expand when needed and note it in the summary):
 
 | Mode trigger | Allowed paths |
 | --- | --- |
 | Task mentions `ui` or `logs` | `ui/**`, `logs/**`, `ai/state/*.json`, `ai/backlog.md` |
 | Stage 2 Biz2/Biz3 (only after unlock) | `ai/studio/**`, `ai/backlog.md`, `ai/state/*.json`, `ui/logs/public/**`, Biz2/Biz3 directories |
-| Stage 1 bootstrap/infra/prox/k3s/flux/harness | `prox/**`, `infra/**`, `scripts/ai_harness.sh`, `config/**`, `logs/ai/**`, `ai/backlog.md`, sample app manifests |
+| Stage 1 bootstrap/infrastructure/talos/flux/harness | `infrastructure/proxmox/**`, `cluster/**`, `scripts/ai_harness.sh`, `config/**`, `logs/ai/**`, `ai/backlog.md`, sample app manifests |
 | Anything else | Only the specific files referenced plus the mandatory state files |
 
-If Hands needs to step outside `allowed_paths`, stop. Junior may expand scope when necessary; if expansion touches red-line areas (DNS/Cloudflare/PVC/VM/secret/tunnel), stop and seek approval. Never read `ai/studio/**` while Stage 1 is in progress.
+If Executor needs to step outside `allowed_paths`, stop. Engineer may expand scope when necessary; if expansion touches red-line areas (DNS/Cloudflare/PVC/VM/secret/tunnel), stop and seek approval. Never read `ai/studio/**` while Stage 1 is in progress.
 
 ## 3. Persona selection
-- **Hands**: localized diagnostics or edits; max 3 attempts.
-- **Junior**: multi-file edits, scaffolding, automation, or when Hands escalates.
-- **Architect**: backlog/charter/design adjustments. Never runs commands.
-- **Robo-Kyle**: advisory comments only, triggered by Architect.
+- **Executor**: localized diagnostics or edits; max 3 attempts.
+- **Engineer**: multi-file edits, scaffolding, automation, or when Executor escalates.
+- **Planner**: backlog/charter/design adjustments. Never runs commands.
+- **Robo-Kyle**: advisory comments only, triggered by Planner.
 - **Narrative**: separate summarizer invoked only when a cinematic recap is requested.
 
 ## 4. Execution
 - Stay on the chosen backlog item—no mid-run pivots.
 - Use only the tools required for this task (shell, fs, git). No repo-wide `rg` unless the objective is a discovery.
 - Before each command, confirm it touches only `allowed_paths` or approved hosts.
-- Hands stops after three failures and logs the escalation handoff line. Junior must acknowledge the escalation before acting.
+- Executor stops after three failures and logs the escalation handoff line. Engineer must acknowledge the escalation before acting.
 
 ## 5. Logging (stdout)
 Every run prints:
@@ -63,7 +63,7 @@ Nothing else belongs in stdout. Raw command transcripts live only in `ai/state/l
 - `ai/backlog.md` – mark `[x]` on success only.
 - `ai/state/last_run.log` – full technical transcript (commands, stdout/stderr, context notes).
 - `ai/state/human_approvals.md` – append pending approvals and pause if blocked.
-- `logs/ai/hands-<timestamp>.log` – only when Hands records a failure.
+- `logs/executor/executor-<timestamp>.log` – only when Executor records a failure.
 
 Git ops (fetch/pull/checkout/add/push) are sandbox-blocked; treat git internals as read-only. If needed, a single `git status -sb` is acceptable, but focus on file edits.
 

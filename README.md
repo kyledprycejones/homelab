@@ -1,279 +1,118 @@
 # Funoffshore Homelab & Multi-Biz AI Engine
 
-> **Tagline:** A self-maintaining homelab that incubates multiple AI-driven businesses.
+*Tagline: A self-maintaining homelab that incubates multiple AI-driven businesses.*
 
-This repository is the **canonical source of truth** for the Funoffshore homelab and its AI-assisted business engine.  
-It describes:
+This repository is the canonical source of truth for the Funoffshore homelab and its AI-assisted business engine. It describes:
 
-- The **current reality** of the cluster  
-- The **target architecture**  
-- The **long-term vision** for running a portfolio of businesses on top of a single, reproducible control plane  
+- The current reality of the cluster
+- The target architecture
+- The long-term vision for running a portfolio of businesses on top of a single, reproducible control plane
 
-This README is intentionally written as an **Apple-style tech brief + architectural manifesto**. It should be readable by:
-
-- Humans (Kyle, future collaborators, auditors)  
-- AI personas (chatgpt, sidebar, cli, orchestrator agents)  
-
-and used as the **primary narrative input** when generating backlogs, roadmaps, and automation plans.
+This document is written as a tech brief plus architectural manifesto. It should be readable by humans (Kyle, future collaborators, auditors) and the AI orchestrator (Planner / Engineer / Executor personas) and used as the primary narrative input when generating backlogs, roadmaps, and automation plans.
 
 ---
 
 ## 📚 Table of Contents
 
-0. [Stage Progress Snapshot (Backlog Seed)](#-stage-progress-snapshot-backlog-seed)  
-1. [Vision](#-vision)  
-2. [Stage 1 – Homelab Platform](#-stage-1--homelab-platform)  
-3. [Control-Plane-in-a-Box (CPiaB)](#-control-plane-in-a-box-cpiab)  
-4. [Stage 2 – Multi-Business Engine (Biz2 / Biz3)](#-stage-2--multi-business-engine-biz2--biz3)  
-5. [Business Units (Biz2A / Biz2B / Biz2C)](#-business-units-biz2a--biz2b--biz2c)  
-6. [Multi-Business Lines & Personas](#-multi-business-lines--personas)  
-7. [Personas & Multi-Agent Orchestration](#-personas--multi-agent-orchestration)  
-8. [High-Level Architecture Diagram](#-high-level-architecture-diagram)  
-9. [Repository Layout](#-repository-layout)  
-10. [Branching Rules & Canonical Branch](#-branching-rules--canonical-branch)  
-11. [Secrets & Safety](#-secrets--safety)  
-12. [How the Orchestrator Should Use This README](#-how-the-orchestrator-should-use-this-readme)  
-13. [Roadmap & Status](#-roadmap--status)  
-14. [Wishlist / Backlog Seeds](#-wishlist--backlog-seeds)  
-15. [Current Status (High-Level)](#-current-status-high-level)
+1. [Overview](#overview)
+2. [Vision](#vision)
+3. [Stage Progress Snapshot](#stage-progress-snapshot)
+4. [Architecture Summary](#architecture-summary)
+5. [High-Level Architecture Diagram](#high-level-architecture-diagram)
+6. [Stage 1 – Homelab Platform](#stage-1--homelab-platform)
+7. [Stage 2 – AI Studio](#stage-2--ai-studio)
+8. [Stage 3 – Multi-Biz Engine](#stage-3--multi-biz-engine)
+9. [Stage 4 – Control-Plane-in-a-Box (CPiaB) Horizon](#stage-4--control-plane-in-a-box-cpiab-horizon)
+10. [Business Units (Biz2A / Biz2B / Biz2C)](#business-units-biz2a--biz2b--biz2c)
+11. [Operational Personas (Business Roles)](#operational-personas-business-roles)
+12. [Orchestrator Personas (Planner / Engineer / Executor)](#orchestrator-personas-planner--engineer--executor)
+13. [High-Level Architecture Sketch](#high-level-architecture-sketch)
+14. [Repository Layout](#repository-layout)
+15. [Branching Rules & Canonical Branch](#branching-rules--canonical-branch)
+16. [Secrets & Safety](#secrets--safety)
+17. [How the Orchestrator Should Use This Document](#how-the-orchestrator-should-use-this-document)
+18. [Quickstart](#quickstart)
+19. [Roadmap & Status](#roadmap--status)
+20. [Wishlist and Backlog Seeds](#wishlist-and-backlog-seeds)
+21. [Current Status Snapshot](#current-status-snapshot)
 
 ---
 
-## 🚦 Stage Progress Snapshot (Backlog Seed)
+## Overview
 
-| Stage | Scope | Status | Unlock Condition |
-| --- | --- | --- | --- |
-| **Stage 1 – Homelab Bring-Up** | Proxmox + k3s + Flux; ingress, tunnel, monitoring, storage, sample apps | Active (in progress) | GitOps manifests for every Stage 1 requirement + successful postcheck (`stage_1_complete` checkbox/flag) |
-| **Stage 2 – Biz2/Biz3** | AI Studio workflows, Biz incubators, multi-agent experiments | Locked | Stage 1 marked complete and approved |
-
-- Stage details + checkboxes: `ai/mission.md`.  
-- Active backlog: `ai/backlog.md` (Stage 1 items auto-synced by scripts/executor/stage1_backlog_sync.py).  
-- **Orchestrator directive:** Use this table and the Stage 1 requirements below to seed/refresh backlog items before each loop. Do not select Stage 2 work until Stage 1 is marked complete.
+Funoffshore is building a fully automated, self-maintaining homelab cluster that can power multiple AI-assisted businesses.
 
 ---
 
-## 🎯 Vision
-
-Funoffshore is building:
-
-> **A fully automated, self-maintaining homelab cluster that can power multiple AI-assisted businesses.**
+## Vision
 
 Core principles:
 
-- **Reproducibility** – The entire stack (from bare metal to apps) can be rebuilt from this repo.  
-- **GitOps-first** – Configuration lives in Git; the cluster converges to match Git, not the other way around.  
-- **Multi-tenant by design** – One homelab, many businesses (Biz2A/B/C, Biz3, future units).  
-- **Agent-driven evolution** – AI personas propose, implement, and test changes under strict guardrails.  
+- **Reproducibility** – The entire stack, from bare metal to apps, can be rebuilt from this repository.
+- **GitOps-first** – Configuration lives in Git; the cluster converges to match Git, not the other way around.
+- **Multi-tenant by design** – One homelab, many businesses (Biz2A/B/C, Biz3, and future units).
+- **Agent-driven evolution** – AI personas propose, implement, and test changes under strict guardrails.
 - **Portability** – The control plane can be moved, replicated, or shipped as an artifact (see CPiaB).
 
-This README captures both **what exists now** and **where we want to go**, so the orchestrator can always answer:
+---
 
-- “What is the intended architecture?”  
-- “What is safe to change next?”  
-- “How do we turn this into a real business line?”
+## Stage Progress Snapshot
+
+The project is organized into stages. Each stage has an unlock condition that protects focus.
+
+- **Stage 1 – Homelab Bring-Up**  
+  Scope: Proxmox + Talos-managed Kubernetes + Flux; ingress, tunnel, basic monitoring, storage, sample apps.  
+  Status: Active (in progress).  
+  Unlock condition: GitOps manifests for all Stage 1 requirements; post-check marks `stage_1_complete`; cluster is reproducible from this repo via the bootstrap script.
+
+- **Stage 2 – AI Studio**  
+  Scope: AI Studio workflows, multi-persona engineering surface, repo-editing agents, orchestrator execution.  
+  Status: Locked.  
+  Unlock condition: Stage 1 is marked complete and stable; Talos cluster can be brought up reproducibly via `cluster_bootstrap.sh` without manual fixes.
+
+- **Stage 3 – Multi-Biz Engine (Biz2 / Biz3)**  
+  Scope: Biz incubators, multi-agent experiments, multi-tenant app stacks.  
+  Status: Locked.  
+  Unlock condition: Stage 2 AI Studio can deliver non-trivial repo changes end-to-end under guardrails.
+
+- **Stage 4 / Horizon – CPiaB**  
+  Scope: Control-Plane-in-a-Box: a portable control plane that can bootstrap itself in other environments.  
+  Status: Vision only (R&D).  
+  Unlock condition: Homelab and AI Studio are mature and stable enough to treat CPiaB as a product track.
+
+Stage details and checklists live in `ai/mission.md`. The active backlog lives in `ai/backlog.md` (Stage 1 items may be auto-synced by scripts).
 
 ---
 
-## 🛰 Stage 1 – Homelab Platform
+## Architecture Summary
 
-Stage 1 is about building a **solid, reproducible homelab** that everything else rests on.
+The homelab is built in layers:
 
-### Hardware & Base Layer
-
-- **Proxmox** on the N100 mini-PC (primary compute node)  
-- **Synology DiskStation** providing NFS-backed storage  
-- **Local MacBook** as a high-powered, Wi-Fi-connected control node for AI and orchestration  
-
-### Kubernetes & Core Components
-
-The cluster is based on:
-
-- **k3s** – Lightweight Kubernetes distribution for the control plane  
-- **FluxCD** – GitOps engine that reconciles `infra/` into the running cluster  
-- **Traefik** – Ingress controller managing HTTP/S traffic inside the cluster  
-- **Cloudflared Tunnel** – Secure entry point from the public internet into select internal services  
-- **Prometheus / Grafana / Loki** (planned) – Observability stack for metrics, dashboards, and logs  
-- **Vault or similar secrets management** (planned) – Centralized handling of sensitive data  
-
-### Storage & Networking
-
-- **Synology NFS exports** mounted into the cluster for stateful workloads (media, databases, logs).  
-- Internal networking starts simple, then evolves toward **multi-AZ / multi-cluster** patterns as needed.  
-- **Cloudflared** provides an outbound-only tunnel so no direct inbound ports need to be opened on the homelab.
-
-### Stage 1 Outcome
-
-A **stable, observable, GitOps-managed platform** capable of running:
-
-- Media and personal apps (Arr stack, Jellyfin, qBittorrent, etc.)  
-- Utility services (VPN, DNS, tunnels)  
-- AI Studio and Biz2/Biz3 workloads  
+1. **Physical and virtualization layer**
+   - N100 mini PC running Proxmox as primary compute
+   - Synology DiskStation providing NFS storage
+   - Local MacBook as a Wi‑Fi-connected control node for development and orchestration
+2. **Kubernetes platform layer**
+   - Talos OS managing control plane and worker nodes running on Proxmox VMs
+   - Upstream Kubernetes managed by Talos
+   - FluxCD as the GitOps engine
+   - Ingress controller (ingress-nginx)
+   - Cloudflared tunnel for secure external access
+   - Basic monitoring stack using open source tools (Prometheus / Grafana / Loki) in Stage 1
+3. **AI Studio layer (Stage 2)**
+   - AI Studio services running in the cluster
+   - Orchestrator flows built with LangGraph / LangChain to model Planner / Engineer / Executor loops
+   - Telemetry and tracing via an OpenTelemetry-based pipeline in Stage 2 (for AI Studio and workloads)
+4. **Multi-Biz layer (Stage 3)**
+   - Biz2/Biz3 namespaces and overlays
+   - Per-business backlogs, services, and dashboards
+   - AI agents acting as PM, SRE, Security, Engineering, Research, and Marketing personas
+5. **Horizon layer (Stage 4 CPiaB)**
+   - The homelab’s control-plane patterns evolve into a sealed “control-plane-in-a-box” artifact.
 
 ---
 
-## 🧳 Control-Plane-in-a-Box (CPiaB)
-
-Funoffshore is incubating a long-term initiative called **Control-Plane-in-a-Box (CPiaB)** — a fully sealed, **portable Kubernetes control plane** capable of bootstrapping itself *inside* another organization’s infrastructure.
-
-This pattern has historical precedent in **high-security financial-sector migrations**, where a cluster from *Bank A* is deployed parasitically across the hardware stack of *Bank B*, gradually:
-
-- Discovering resources  
-- Onboarding nodes  
-- Reconciling the entire environment back to a canonical GitOps repo  
-
-### CPiaB Goals
-
-CPiaB aims to deliver:
-
-- A **self-contained k3s control plane** (sealed, reproducible, air-gap friendly)  
-- **Automated discovery** of hardware, networks, and service endpoints  
-- **Zero-trust node onboarding**, certificate minting, and identity propagation  
-- **Declarative expansion** of workloads across the target infrastructure  
-- **Full GitOps reconciliation** against a canonical repository (this one or a derivative)  
-- **Cluster-as-Cargo deployments** suitable for regulated industries  
-- **Migration pathways** for financial institutions, legacy datacenters, or cloud exits  
-
-In the Funoffshore context, CPiaB is both:
-
-1. A **concrete technical target** for the homelab architecture.  
-2. A **future business unit** that could be productized once the system is reliable.  
-
-This initiative is one of the active R&D lines under the Funoffshore homelab and will eventually form part of the **Stage 2+ multi-business engine** once the base platform reaches complete reproducibility.
-
----
-
-## 🧵 Stage 2 – Multi-Business Engine (Biz2 / Biz3)
-
-Once the homelab reaches stability, the repo activates **Biz2 / Biz3**, an AI-powered research and prototyping studio.
-
-It uses:
-
-- A local-first **AI Studio** (`ai/studio/`)  
-- Multi-agent workflows (PM → Architect → Engineer → Researcher → Marketer)  
-- Local LLMs via Ollama and optional cloud models  
-- Experiment tracking via `ai/memory/`, `ai/reports/`, and automated news digests  
-
-This allows the homelab to run **multiple AI-assisted business lines in parallel** — each incubated, evaluated, and promoted through a repeatable pipeline.
-
----
-
-## 🏭 Business Units (Biz2A / Biz2B / Biz2C)
-
-Funoffshore’s AI ecosystem is structured not as a single venture but as a **multi-unit R&D engine**.  
-Each business unit is a lane of ideation, engineering, and validation — designed so the orchestrator can **autonomously generate, filter, and advance opportunities**.
-
-### Biz2A — Rapid Prototyping Unit
-
-A high-velocity experimentation track focused on:
-
-- 24–72 hour prototypes  
-- Market-signal testing  
-- Lightweight frontends and mock integrations  
-- Fast PM → Architect → Engineer loops  
-- High idea volume, low cost of failure  
-
-Biz2A is the **idea explosion pipeline** feeding the entire system.
-
-### Biz2B — Technical Depth Unit
-
-Where engineering rigor begins. Biz2B produces:
-
-- Real services (Go / Python / Node)  
-- Systems design artifacts  
-- Research-driven technical evaluations  
-- Early backend APIs  
-- Homelab-native workloads (Kubernetes microservices, operators, pipelines)  
-
-Biz2B creates the first **durable engineering assets** inside the incubator.
-
-### Biz2C — Commercialization Unit
-
-Only a small fraction of concepts graduate here. Biz2C focuses on:
-
-- Real users and early adoption  
-- Positioning, branding, and messaging  
-- Product shaping & pricing  
-- SLA-aware design, SRE & Security sign-off  
-- Deployment & monitoring inside the Funoffshore cluster  
-
-Biz2C is where a concept becomes a **minimum viable product**, ready for Biz3 and external exposure.
-
-Each Biz unit mirrors real-world organizational structure — allowing the orchestrator to generate plans, backlogs, and multi-persona workflows with **clarity and repeatability**.
-
----
-
-## 🏢 Multi-Business Lines & Personas
-
-The Funoffshore platform is designed to incubate **multiple AI-assisted businesses in parallel**, each with its own lifecycle, metrics, and development pipeline.  
-Biz2/Biz3 serve as the initial incubators, but the structure supports essentially **unlimited business lines**.
-
-Each business is staffed by internal AI personas that mirror real operational roles:
-
-### Product Management (PM)
-
-- Defines market requirements and customer problems.  
-- Writes opportunity briefs, acceptance criteria, and experiment scopes.  
-- Prioritizes features through the Biz2 backlog.
-
-### SRE (Site Reliability Engineering)
-
-- Ensures each business’s infrastructure is observable, scalable, and fault-tolerant.  
-- Works with monitoring stacks, alerting rules, service-level targets.  
-- Validates deployment health through the homelab cluster.
-
-### Security
-
-- Hardens the homelab and all Biz projects.  
-- Performs threat modeling, secret-flow analysis, and supply-chain checks.  
-- Ensures all AI-generated code adheres to safe patterns.
-
-### Engineering
-
-- Writes implementation plans, code, manifests, and tests.  
-- Builds prototypes, services, dashboards, and full product slices.  
-- Hands deliverables to SRE + Security personas for validation.
-
-### Research
-
-- Scans external news, trends, and datasets.  
-- Generates competitive analyses and technical evaluations.  
-- Provides PM with insight for opportunity scoring.
-
-### Marketing
-
-- Packages the output of Engineering into materials for Biz3.  
-- Writes product blurbs, landing pages, and positioning.  
-- Prepares assets for future commercial rollout.
-
-Each business line moves through these personas in sequence — forming a **closed-loop, multi-agent AI development pipeline** that can explore, validate, and operationalize new ideas at high speed.
-
----
-
-## 🧠 Personas & Multi-Agent Orchestration
-
-At the repo level, the system is managed via a **split-persona orchestration model**:
-
-- **chatgpt (Architect / Strategist)**  
-  Designs high-level plans, writes memos, updates this README, and defines mission stages.
-
-- **sidebar (Engineer / Junior)**  
-  Edits files, maintains repo structure, generates manifests, and manages branches.  
-  Operates under strict directory and stage constraints.
-
-- **cli (Hands / Executor)**  
-  Runs scripts on the N100, applies manifests, performs flux/helm/kubectl operations, and reports logs back.
-
-Key ideas:
-
-- **Architect plans → sidebar implements → cli executes.**  
-- Secrets are never exposed to sidebar or chatgpt; they live only in local env files.  
-- Mission stages in `ai/mission.md` define which directories and business units are “open” for work.
-
-This separation keeps the system **safe, auditable, and recoverable**, even as automation gets more aggressive.
-
----
-
-## 🧩 High-Level Architecture Diagram
+## High-Level Architecture Diagram
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
@@ -284,177 +123,363 @@ This separation keeps the system **safe, auditable, and recoverable**, even as a
 │  └──────┬───────┘    └──────────────┬───────────────┘   │
 │         │                            │                   │
 │   ┌─────▼────────────────────────────▼───────┐           │
-│   │                k3s Cluster               │           │
+│   │         Talos-Managed Kubernetes         │           │
 │   │  (FluxCD, Traefik, Cloudflared, Apps)   │           │
 │   └─────┬────────────────────────────────────┘           │
 │         │                                                │
 │   ┌─────▼────────┐     ┌──────────────────────────────┐ │
 │   │ AI Orches.   │     │     Multi-Biz Engine (Biz2)  │ │
-│   │ chatgpt      │     │  Biz2A / Biz2B / Biz2C       │ │
-│   │ sidebar      │     │  Biz3 (brand + market)       │ │
-│   │ cli          │     └──────────────────────────────┘ │
-│   └──────────────┘                                        │
+│   │ ChatGPT Desk │     │  Biz2A / Biz2B / Biz2C       │ │
+│   │ Codex Side   │     │  Biz3 (brand + market)       │ │
+│   │ Codex CLI    │     └──────────────────────────────┘ │
+│   └──────────────┘                                      │
 └──────────────────────────────────────────────────────────┘
+```
 
+---
 
-⸻
+## Stage 1 – Homelab Platform
 
-📁 Repository Layout
+Goal: Build a solid, reproducible homelab that everything else rests on.
+
+**Hardware and base layer**
+
+- Proxmox on the N100 mini PC as the primary compute node
+- Synology DiskStation providing NFS-backed storage
+- Local MacBook as the main operator and AI client
+
+**Kubernetes and core components**
+
+- Talos: OS and Kubernetes lifecycle manager for control plane and workers; Proxmox VMs boot Talos and are configured via machine configs from this repo
+- Kubernetes: upstream cluster running on Talos nodes
+- FluxCD: reconciles the contents of `cluster/kubernetes/` into the running cluster; ensures Git is the source of truth
+- Ingress controller: ingress-nginx managing HTTP/S traffic into services
+- Cloudflared tunnel: outbound tunnel from homelab to Cloudflare; no direct inbound ports required on the home network
+- Monitoring (Stage 1 scope): basic Prometheus / Grafana / Loki deployment to see node and cluster health and inspect logs
+- Secrets management (early placeholder): Vault or SOPS-based workflows planned; real secrets never enter this repo
+
+**Storage and networking**
+
+- Synology NFS exports mounted into the cluster as persistent volumes
+- Storage classes provided by an NFS provisioner for stateful workloads
+- Network kept simple initially, with multi-AZ or multi-cluster patterns as a future optimization
+
+**Stage 1 outcome**
+
+- Talos-managed Kubernetes cluster on Proxmox
+- GitOps convergence via Flux
+- NFS-backed storage
+- At least one sample app available via ingress and Cloudflared
+- Basic metrics and logs visible in Grafana and Loki
+- Reproducible bring-up via `cluster_bootstrap.sh` and GitOps
+
+---
+
+## Stage 2 – AI Studio
+
+The AI Studio is the internal AI-driven engineering environment that sits on top of the homelab.
+
+Its purpose is to:
+
+- Turn English instructions into code, manifests, and documentation
+- Manage Planner / Engineer / Executor loops as structured flows
+- Provide a UI and logs so humans can inspect and guide the system
+
+Core ideas:
+
+- **Multi-persona orchestrator** – Planner, Engineer, Executor personas collaborate to plan work, propose changes, and run controlled actions.
+- **LangGraph / LangChain** – Graph-based orchestration stack to model multi-step, stateful flows, including tool calls, code edits, and validation steps.
+- **Hybrid models** – Calls local LLMs (for example via Ollama) and cloud models, depending on task type and cost.
+- **Observability for AI** – Stage 2 introduces an OpenTelemetry-based pipeline focused on AI Studio and key workloads: traces of orchestrator runs; metrics on run duration, success, and error types; logs and events fed into the same monitoring stack.
+
+Key components and directories:
+
+- `ai/studio/` – Architecture notes, design documents, and configuration for AI Studio.
+- `ai/agents/` – Definitions and prompts for AI personas used by the orchestrator.
+- `ai/state/` – Run logs, last-run markers, stage flags, and other orchestrator state.
+- `ui/studio/` (future) – Minimal web UI for viewing runs, tasks, and backlog links.
+
+**Stage 2 outcome:** A working AI Studio that can take a ticket from `ai/backlog.md`, produce a plan, generate code or manifests, and propose commands for the operator, all under guardrails.
+
+---
+
+## Stage 3 – Multi-Biz Engine
+
+Stage 3 focuses on running multiple AI-assisted businesses on top of the platform and the AI Studio.
+
+Each business is treated as a tenant with:
+
+- Its own namespace or overlays
+- Its own backlog and lifecycle
+- Its own AI personas working through a structured pipeline
+
+Structure:
+
+- `biz/`
+- `biz2/`
+- `biz3/`
+
+Biz2 and Biz3 are “families” of businesses; inside them, business units like Biz2A/B/C represent specific tracks (rapid prototyping, technical depth, commercialization).
+
+**Stage 3 outcome:** Multiple business units running in parallel on the homelab; backlogs, services, dashboards, and reports generated and maintained with help from AI Studio; a repeatable pattern for spinning up new business lines.
+
+---
+
+## Stage 4 – Control-Plane-in-a-Box (CPiaB) Horizon
+
+Control-Plane-in-a-Box (CPiaB) is the long-term horizon: a sealed, portable Kubernetes control plane capable of bootstrapping itself inside another organization’s infrastructure.
+
+High-level goals:
+
+- Self-contained Talos/Kubernetes + Flux bundle, reproducible and air-gap friendly
+- Automated discovery of hardware and network resources in a new environment
+- Zero-trust node onboarding and identity management
+- Declarative expansion of workloads from a canonical Git repository
+- “Cluster-as-cargo” deployments suitable for regulated industries
+
+In this homelab, CPiaB serves as:
+
+1. A concrete technical North Star for how the control plane should be structured
+2. A potential future product line once the homelab and AI Studio are robust
+
+---
+
+## Business Units (Biz2A / Biz2B / Biz2C)
+
+Funoffshore treats business exploration as a multi-lane engine rather than a single startup.
+
+- **Biz2A – Rapid Prototyping Unit**  
+  24–72 hour prototypes; lightweight frontends and mock integrations; fast PM → Planner → Engineer loops; market-signal testing with minimal investment; high idea volume, low cost of failure.
+
+- **Biz2B – Technical Depth Unit**  
+  Real services (APIs, backend systems, infrastructure components); systems design documents and architecture diagrams; homelab-native workloads (microservices, operators, pipelines); research-driven technical evaluations and spike solutions.
+
+- **Biz2C – Commercialization Unit**  
+  Focus on real users and adoption; positioning, branding, messaging, pricing; SRE and Security sign-off; SLA-aware deployment and observability; produces internal MVPs ready to become independent products or Biz3 offerings.
+
+---
+
+## Operational Personas (Business Roles)
+
+Each business line is mirrored by personas corresponding to real operational roles; personas may be human, AI, or both.
+
+- **Product Management (PM)** – Defines customer problems and opportunities; writes briefs, acceptance criteria, and experiment scopes; prioritizes the business backlog.
+- **SRE (Site Reliability Engineering)** – Ensures services are observable, reliable, and scalable; designs SLOs and alerts; validates deployment health using the homelab observability stack.
+- **Security** – Performs threat modeling and reviews secret handling; ensures secure defaults and safe patterns for AI-generated code; oversees supply-chain and dependency concerns.
+- **Engineering** – Writes implementation plans, code, manifests, and tests; builds prototypes, services, and data pipelines; hands off to SRE and Security for validation.
+- **Research** – Tracks external news, tech trends, and data sources; produces comparative analyses and technical evaluations; informs PM and Engineering prioritization.
+- **Marketing** – Packages Engineering outputs into assets: blurbs, landing pages, visuals; helps shape positioning and messaging; prepares artifacts for Biz3 and eventual public release.
+
+The combination of these personas forms a closed-loop, multi-agent pipeline to explore, validate, and operationalize new ideas.
+
+---
+
+## Orchestrator Personas (Planner / Engineer / Executor)
+
+At the repo level, an AI orchestrator manages work through three internal personas:
+
+- **Planner** – Reads mission and backlog (`ai/mission.md` and `ai/backlog.md`); proposes high-level plans and decomposes goals into tasks; prioritizes which tasks to attempt in a given loop.
+- **Engineer** – Translates tasks into concrete code and configuration changes; edits files in the repository following directory and stage constraints; proposes diffs, tests, and validation steps.
+- **Executor** – Proposes or runs the necessary commands to apply changes (for example running scripts, triggering GitOps sync, or verifying cluster state); captures logs and outcomes into `ai/state/` and external log files; reports success or failure back to Planner and Engineer.
+
+Implementation detail: The orchestrator is implemented on top of external LLM systems and tools (such as ChatGPT clients, code editors, and local scripts), but this document treats them abstractly as Planner / Engineer / Executor. A human operator remains in the loop to review diffs and confirm actions. This separation keeps the system safe, auditable, and recoverable, even as automation becomes more capable.
+
+---
+
+## High-Level Architecture Sketch
+
+Conceptual text diagram, not exact wiring:
+
+- Funoffshore Homelab
+  - Proxmox (N100)
+  - Talos VMs (control plane + workers)
+  - Kubernetes cluster
+  - Synology NAS with NFS exports and persistent volumes
+- Talos-Managed Kubernetes
+  - FluxCD GitOps
+  - Ingress-nginx
+  - Cloudflared tunnel
+  - Basic monitoring stack (Prom / Graf / Loki)
+- AI Studio services (Stage 2)
+- Multi-biz workloads (Stage 3)
+- AI Orchestrator
+  - Planner / Engineer / Executor flows via LangGraph / LangChain
+  - Reads/writes repo and coordinates with the operator
+- Multi-Biz Engine
+  - Biz2A / Biz2B / Biz2C experiments and services
+  - Biz3 branding and external-facing assets
+
+---
+
+## Repository Layout
 
 High-level directory map:
-	•	ai/ – Mission, backlog, persona prompts, orchestrator docs, AI studio scaffolding for Biz2/Biz3.
-	•	config/ – Cluster configs and environment overrides.
-👉 Secrets in config/env/ stay local and must never be committed.
-	•	infra/ – Kubernetes/Flux manifests (cloudflared, monitoring, apps, ingress, storage, etc.).
-	•	prox/ – Proxmox and bootstrap scripts (k3s installers, node prep, cluster helpers).
-	•	scripts/ – Orchestration helpers (ai_harness.sh, host/bootstrap utilities, local helpers).
-	•	logs/ – Runtime logs (gitignored). Summaries and views live under ui/logs/.
-	•	synology/ – NAS and NFS configuration for the DiskStation.
-	•	ui/ – Static log viewer and indexing tools.
 
-The orchestrator should treat this layout as contractual: new work must respect these boundaries unless explicitly authorized by an updated plan.
+- `cluster/` – Talos templates and Kubernetes GitOps tree (for example: `kubernetes/flux`, `kubernetes/platform`, `kubernetes/apps`).
+- `infrastructure/` – Proxmox VM bootstrap scripts (`infrastructure/proxmox/`) and room for future Terraform/Ansible.
+- `config/` – Cluster definitions and environment files (`config/clusters/`, `config/env/`). No real secrets live here.
+- `scripts/` – Local helper scripts such as `bootstrap_cluster.sh`, `check_cluster.sh`, `host_bootstrap.sh`, and other orchestration helpers.
+- `synology/` – NAS and NFS/SMB configuration scripts or notes.
+- `ai/` – Mission, backlog, persona prompts, AI Studio scaffolding, orchestrator state.
+- `logs/` – Execution logs (gitignored); bootstrap scripts write timestamped logs here.
+- `docs/` – Architecture documents and repo contract descriptions (for example `docs/architecture.md`, `docs/repo-contract.md`).
 
-⸻
+Secrets remain local or are stored using encryption tools such as SOPS. The `.talos/` directory remains untracked except for non-secret templates.
 
-🌳 Branching Rules & Canonical Branch
-	•	main is the canonical branch and single source of truth.
-	•	Always sync main before creating new work.
+---
 
-AI- or automation-generated branches use the pattern:
+## Branching Rules & Canonical Branch
 
-sidebar/<slug>-YYYYMMDD
+(The exact Git workflow can be tuned later; this section describes the intent.)
 
-Examples:
-	•	sidebar/cloudflared-20251127
-	•	sidebar/monitoring-stack-20251201
+- The canonical branch for the cluster is the branch that Flux follows (for example `main`).
+- Changes to infrastructure or apps should be made in feature branches and merged via review.
+- The orchestrator should assume that only the canonical branch represents the desired cluster state.
+- Experimental AI-driven edits can live in staging branches or forks and be merged only after human review.
 
-Branches should:
-	•	Always be based on main.
-	•	Contain focused, reviewable changes (one feature/bugfix per branch where possible).
-	•	Be merged via standard Git workflows outside of automation.
+---
 
-Additional orchestration quick rules:
-	•	Personas: Architect (planning), Junior (repo edits), Hands (commands), Narrative (optional summaries).
-Definitions live in ai/agents/.
-	•	Mission stages in ai/mission.md control what directories the AI may touch
-(Stage 1 = homelab infra only; Stage 2 = Biz2/Biz3).
-	•	Full workflow/branching rules are documented in CONTRIBUTING.md and ai/README.md.
+## Secrets & Safety
 
-⸻
+- Real secrets (API keys, tokens, passwords) never live in this repository.
+- Secrets are provided via local environment files, vaults, or encrypted mechanisms.
+- The orchestrator personas must not create, print, or exfiltrate secrets.
+- The human operator is always in the loop: reviews diffs; decides when to run scripts or apply manifests; can roll back via Git or restore from backups.
 
-🔒 Secrets & Safety
+This project is experimental and intended for a single homelab. It is not hardened for production use in critical environments.
 
-Non-negotiable rules:
-	•	All secrets live exclusively in config/env/ and are never committed.
-	•	sidebar may modify manifests and non-secret configs, but only cli interacts with the live cluster.
-	•	Any script that could destroy data or reformat disks must:
-	•	Live in a clearly named path (e.g., prox/wipe_*, scripts/dangerous_*).
-	•	Be documented and never invoked by automation without explicit human approval.
-	•	Cloudflared ingress routes live in infra/k8s/cloudflared/ and are the only tunnel-related files automation may edit.
+---
 
-If an agent is unsure whether an operation is safe, it should:
-	1.	Propose the change in a plan or README / ai/ doc.
-	2.	Wait for human approval before touching code or infra.
+## How the Orchestrator Should Use This Document
 
-⸻
+The orchestrator should treat this document as the canonical narrative of “what we are trying to build.”
 
-🤖 How the Orchestrator Should Use This README
+In each loop:
 
-This README is the source of truth for intent. Automation should:
-	1.	Read this document first when planning work.
-	2.	Use the sections above to infer:
-	•	Current stage (1 vs 2)
-	•	Which directories are in scope
-	•	Which business units are active
-	3.	Generate or update:
-	•	ai/mission.md – high-level mission and stage definition
-	•	ai/tasks.md or equivalent – concrete tasks and backlog items
-	•	Branches under sidebar/* with focused commits
-	4.	Avoid:
-	•	Inventing new, undocumented architectures
-	•	Touching secrets or env files
-	•	Modifying dangerous scripts without explicit sign-off
+1. Read the current mission and stage from `ai/mission.md`.
+2. Use the Stage Progress Snapshot and Roadmap sections to determine which stage is active.
+3. Only generate tasks and plans that are valid for the current stage.
+4. Use this document to understand target architecture, identify safe components to modify, and respect guardrails around secrets and safety.
 
-In other words: this README is the north star.
+The orchestrator must not jump ahead to Stage 2 or Stage 3 work while Stage 1 is incomplete, even if it technically could.
 
-If the code and README disagree, the orchestrator should either:
-	•	Propose README updates to match reality, or
-	•	Propose code changes to match the README — but never silently diverge.
+---
 
-⸻
+## Quickstart
 
-🗺 Roadmap & Status
+### Quickstart A – Bootstrap the homelab cluster
 
-Stage 1 – Homelab Platform
+1. Prepare hardware:
+   - Proxmox installed and reachable
+   - Synology NAS available with NFS exports
+   - Local operator machine with necessary tools installed
+2. Clone this repository to the operator machine.
+3. Configure cluster and environment:
+   - Copy and edit files in `config/clusters/` and `config/env/` for your N100 / Talos cluster.
+   - Ensure addresses, node counts, and storage settings match your Proxmox and Synology setup.
+4. Run the cluster bootstrap script from the appropriate directory, for example:
+   - `infrastructure/proxmox/cluster_bootstrap.sh` creates or updates Proxmox VMs for control plane and workers, injects Talos machine configs, waits for the Kubernetes control plane to become reachable, installs Flux, and points it at `cluster/kubernetes/`.
+5. Verify the cluster:
+   - Confirm kubeconfig exists locally (for example `.talos/<cluster>/kubeconfig`).
+   - Run `kubectl get nodes` and check nodes are Ready.
+   - Confirm Flux is reconciling the GitOps tree.
 
-Goal: A stable, observable, GitOps-managed k3s cluster on Proxmox with Synology-backed storage and Cloudflared ingress.
+### Quickstart B – Run the orchestrator loop (high-level)
 
-Core milestones:
-	•	Proxmox base configuration finalized
-	•	k3s cluster bootstrapped via cluster_bootstrap.sh
-	•	FluxCD installed and reconciling infra/
-	•	Traefik ingress routing traffic for at least one sample app
-	•	Cloudflared tunnel configured with DNS entries for public endpoints
-	•	NFS storage from Synology mounted and used by at least one stateful workload
-	•	Monitoring stack (Prometheus / Grafana / Loki) deployed and scraping cluster metrics
+1. Ensure Stage 1 is at least partially running and the repo is cloned locally.
+2. Configure AI and tool credentials (OpenAI keys, local model endpoints, etc.) according to the harness scripts you use.
+3. From the repo root, run the orchestrator harness script with the desired target, for example a script that:
+   - Reads `ai/mission.md` and `ai/backlog.md`
+   - Invokes Planner / Engineer / Executor loops
+   - Proposes diffs or changes
+   - Writes logs into `ai/state/` and `logs/`
+4. Review proposed diffs and commands as a human operator:
+   - Accept or reject changes
+   - Run the safe commands to apply changes (for example applying manifests, restarting Flux, etc.)
+5. Observe effects on the cluster using the monitoring stack and adjust `ai/mission.md` and `ai/backlog.md` as needed.
 
-Stage 2 – Biz2 / Biz3 Engine
+---
 
-Goal: Use the homelab to incubate multiple AI-assisted business lines.
-	•	AI Studio wired into homelab (local + cloud LLMs)
-	•	Biz2A rapid-prototyping loop operational
-	•	Biz2B technical depth track producing reusable services
-	•	Biz2C commercialization track with at least one internal MVP
-	•	Biz3 handling branding/marketing artifacts for promising ideas
+## Roadmap & Status
 
-CPiaB – Control-Plane-in-a-Box
+### Stage 1 – Homelab Platform
 
-Goal: Turn the homelab control plane into a portable, sealed artifact that can bootstrap itself inside other environments (e.g., financial institutions).
-	•	Define minimal CPiaB spec (footprint, dependencies, expectations)
-	•	Package a k3s + Flux bundle that can run in isolation
-	•	Automate environment discovery and secure node onboarding
-	•	Document a reference “bank-to-bank migration” story and technical flow
+Goal: A stable, observable, GitOps-managed Talos/Kubernetes cluster on Proxmox with Synology-backed storage and Cloudflared ingress.
 
-⸻
+Milestones:
 
-📝 Wishlist / Backlog Seeds
+- Proxmox base configuration finalized
+- Talos control plane and workers bootstrapped via `infrastructure/proxmox/cluster_bootstrap.sh`
+- FluxCD installed and reconciling `cluster/kubernetes/`
+- Ingress controller routing traffic for at least one sample app
+- Cloudflared tunnel configured with DNS entries for public endpoints
+- NFS storage from Synology mounted and used by at least one stateful workload
+- Basic Prometheus / Grafana / Loki stack scraping cluster metrics
 
-This section exists primarily for the orchestrator and future planning.
-These are not commitments, but strong directional ideas that can be turned into issues, branches, or experiments.
+### Stage 2 – AI Studio and Biz2/Biz3 Engine
 
-Homelab / Infra
-	•	Full monitoring stack (Prometheus / Alertmanager / Grafana / Loki) with dashboards for:
-	•	Cluster health
-	•	Node capacity
-	•	App SLOs
-	•	Centralized logging with retention tuned for homelab hardware limits
-	•	Vault or SOPS-based secret management integration (while keeping actual secrets out of Git)
-	•	Tailscale or WireGuard integration for secure remote admin access
-	•	Multi-node k3s expansion once the N100 cluster is stable
+Goal: Use the homelab and AI Studio to incubate multiple AI-assisted business lines.
 
-CPiaB
-	•	CPiaB design doc under ai/reports/ explaining the full architecture
-	•	Prototype CPiaB image that can be booted on a clean Proxmox node
-	•	Air-gapped reconciliation flow (no external network required)
-	•	Playbook for “cluster-as-cargo” deployment inside a mock financial environment
+Milestones:
 
-Biz2 / Biz3
-	•	Formal scoring system for Biz2A/B/C ideas (market size, feasibility, personal interest)
-	•	Automated weekly Biz2 digest generated into ai/reports/
-	•	One or more candidate product lines (e.g., homelab tooling, infra safety tools, CPiaB consultancy)
-	•	Basic public-facing site for Funoffshore (hosted on this homelab)
+- AI Studio services deployed to the cluster
+- Orchestrator flows implemented with LangGraph / LangChain
+- OTel-based telemetry for AI Studio runs and key workloads
+- Biz2A rapid-prototyping loop operational
+- Biz2B technical depth track producing reusable services
+- Biz2C commercialization track with at least one internal MVP
+- Biz3 (or equivalent) handling branding / marketing assets
 
-Automation & Agents
-	•	Richer orchestrator logging and visualizations under ui/logs/
-	•	Guardrail tests that validate AI-generated manifests before they hit the cluster
-	•	Simulation mode: dry-run orchestration flows without touching real infra
+### Stage 4 – CPiaB (Horizon)
 
-⸻
+Goal: Turn the homelab control plane into a portable, sealed artifact that can bootstrap itself inside other environments.
 
-📌 Current Status (High-Level)
-	•	Stage 1 (Homelab): In progress – core scripts and infra structure exist, but convergence and observability are still being hardened.
-	•	Stage 2 (Biz2/Biz3): Locked until Stage 1 reaches reproducible stability.
-	•	CPiaB: Concept defined, early design ideas in place; implementation pending homelab maturity.
+Milestones (conceptual):
 
-This repo is the homepage of the Funoffshore homelab:
-a living architectural document, a planning surface for AI personas, and the launching pad for future businesses.
+- CPiaB spec written (footprint, dependencies, expectations)
+- Prototype image or bundle that can run in isolation on clean Proxmox or similar
+- Automated environment discovery and node onboarding flows
+- End-to-end story for migrating workloads between “banks” or other regulated environments
+
+---
+
+## Wishlist and Backlog Seeds
+
+Directional ideas for future planning (not commitments).
+
+**Homelab and Infrastructure**
+
+- Full monitoring stack with dashboards for cluster health, node capacity, and app SLOs
+- Centralized logging with retention tuned for homelab hardware
+- Vault or SOPS-based secrets management wired into workload manifests
+- Tailscale or WireGuard integration for secure remote access
+- Multi-node expansion once the N100 cluster is fully stable
+
+**CPiaB**
+
+- CPiaB architecture design document under `ai/reports/`
+- Prototype CPiaB “cluster-as-cargo” image
+- Air-gapped reconciliation flow (no external network required)
+- Reference exercise: migration between two fictional banks
+
+**Biz2 / Biz3**
+
+- Formal scoring system for Biz2A/B/C ideas (market size, feasibility, personal interest)
+- Automated weekly Biz2 digest generated into `ai/reports/`
+- Candidate product lines (for example: homelab tooling, infra safety tools, CPiaB consulting patterns)
+- Basic public-facing site for Funoffshore hosted on the homelab
+
+**Automation and Agents**
+
+- Richer orchestrator logging and visualizations under a simple UI
+- Guardrail tests that validate AI-generated manifests before they hit the cluster
+- “Simulation mode” for orchestrator flows that never touch real infrastructure
+
+---
+
+## Current Status Snapshot
+
+- **Stage 1 (Homelab):** In progress. Core scripts and structural layout exist; convergence and observability are still being hardened.
+- **Stage 2 (AI Studio):** Locked until Stage 1 is reproducibly stable. Design ideas exist in `ai/studio/` and this document.
+- **Stage 3 (Biz2/Biz3):** Concept defined, folders scaffolded; implementation depends on AI Studio maturity.
+- **Stage 4 (CPiaB):** Concept defined; implementation deferred until the base platform is robust.

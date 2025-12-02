@@ -1,0 +1,15 @@
+id: task-003-ai-studio-sanity
+description: Validate AI Studio scaffolding can load personas, read backlog, and emit a dry-run plan without touching live infra.
+acceptance_criteria:
+  - ai/studio/main.py runs a noop or overview workflow locally without errors
+  - ai/agents definitions load and are referenced in logs
+  - Run output stored under ai/state/ or ai/studio/memory/ with timestamped artifact
+persona_flow:
+  - Planner: define scope (no cluster writes) and expected outputs
+  - Engineer: tune config.yaml or workflow settings; add guardrails if missing
+  - Executor: execute the workflow locally and capture logs into ai/state/
+repo_paths:
+  - ai/studio/main.py
+  - ai/studio/config.yaml
+  - ai/agents/
+  - ai/state/

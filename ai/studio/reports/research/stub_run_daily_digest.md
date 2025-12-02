@@ -7,7 +7,7 @@ tags: ["biz2", "stub"]
 
 Workflow: daily_digest
 
-Agents: pm, architect, engineer, marketer, researcher
+Agents: pm, planner, engineer, marketer, researcher
 
 Default LLM: local
 

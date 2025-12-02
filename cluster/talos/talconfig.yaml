@@ -1,0 +1,14 @@
+# Placeholder Talos cluster config (non-secret).
+# Aligns with config/clusters/prox-n100.yaml.
+clusterName: prox-n100
+endpoint: https://192.168.1.151:6443
+nodes:
+  - role: controlplane
+    ip: 192.168.1.151
+  - role: worker
+    ip: 192.168.1.152
+  - role: worker
+    ip: 192.168.1.153
+notes:
+  - Generate real configs with talosctl using values from config/clusters/.
+  - Do not commit machine secrets; .talos/ is ignored.

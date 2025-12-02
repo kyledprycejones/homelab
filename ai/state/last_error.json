@@ -1,0 +1,9 @@
+{
+  "task_id": "S1-001-RUN",
+  "persona": "executor",
+  "command": "infrastructure/proxmox/cluster_bootstrap.sh",
+  "stderr_tail": "Remote bootstrap command: /tmp/cluster_bootstrap.sh all  == Starting stage: all ==  == STAGE [precheck] START == Config: CTRL_IP=192.168.1.151 SSH_USER=kyle SSH_PORT=22 PASS=***** WORKERS=192.168.1.152 192.168.1.153 DOMAIN=funoffshore.com GIT_BRANCH=main Cloudflare: API=*** TUNNEL=eyJh***eSJ9 ORIGIN_CA=***  == Checking SSH connectivity == - 192.168.1.151: ok - 192.168.1.152: ok - 192.168.1.153: ok  == STAGE [precheck] COMPLETE ==  == STAGE [k3s] START == mkdir: cannot create directory ‘//.talos’",
+  "error_hash": "3ccd739fcb0fe97722ac2ed9502ed34916d9510a",
+  "failure_count": 1,
+  "classification": "ssh_failure"
+}

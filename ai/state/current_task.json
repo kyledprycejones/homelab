@@ -1,0 +1,7 @@
+{
+  "task_id": "S1-001-RUN",
+  "persona": "executor",
+  "status": "failed",
+  "started_at": "1764354101.095004",
+  "note": "Run Stage 1 bootstrap for prox-n100; stop on first failure and log."
+}

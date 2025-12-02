@@ -1,0 +1,8 @@
+# placeholder values for Longhorn; adjust before enabling
+persistence:
+  defaultClass: true
+  reclaimPolicy: Delete
+defaultSettings:
+  defaultDataPath: /var/lib/longhorn
+  createDefaultDiskLabeledNodes: true
+  defaultReplicaCount: 2

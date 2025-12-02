@@ -1,5 +1,5 @@
 {
-  "persona": "junior",
+  "persona": "engineer",
   "task": "Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)",
   "iteration": 1,
   "last_exit_reason": "in_progress",

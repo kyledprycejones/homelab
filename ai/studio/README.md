@@ -15,4 +15,4 @@ Local multi-agent “studio” for ideating and prototyping AI projects on the h
 3. Run `python3 ai/studio/main.py --workflow overview` to confirm the CLI scaffold is wired up.
 4. Keep generated artifacts under `memory/` or `reports/`, leaving templates tracked in Git.
 
-Hands can extend/debug this once infra is stable; Junior owns the roadmap until workflows exist.
+Executor can extend/debug this once infra is stable; Engineer owns the roadmap until workflows exist.

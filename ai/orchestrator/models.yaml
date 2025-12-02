@@ -1,0 +1,25 @@
+# Stage 1 orchestrator model registry (non-secret)
+models:
+  executor_local:
+    provider: local
+    name: llama3.1:8b
+    max_tokens: 2048
+    temperature: 0.2
+
+  executor_cloud:
+    provider: openai
+    name: gpt-4.1-mini
+    max_tokens: 2048
+    temperature: 0.2
+
+  engineer_default:
+    provider: openai
+    name: gpt-5-mini
+    max_tokens: 4096
+    temperature: 0.1
+
+  planner_default:
+    provider: openai
+    name: gpt-5.1
+    max_tokens: 8192
+    temperature: 0.2

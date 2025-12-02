@@ -1,0 +1,14 @@
+id: task-002-create-demo-app
+description: Add a small demo app (hello-world web service) to cluster/kubernetes/apps/ and expose it via ingress-nginx/Cloudflared with NFS-backed storage.
+acceptance_criteria:
+  - App manifest lives under cluster/kubernetes/apps/demo/ with Deployment, Service, and IngressRoute/Ingress
+  - PVC uses nfs-storage StorageClass and binds successfully after Flux sync
+  - Public hostname resolves through Cloudflared tunnel and returns 200 OK
+persona_flow:
+  - Planner: propose minimal app shape and routing hostnames; confirm storage needs
+  - Engineer: write manifests and overlays; ensure values are GitOps-safe
+  - Executor: apply via Flux (or wait for reconciliation) and validate reachability/logs
+repo_paths:
+  - cluster/kubernetes/apps/demo/
+  - cluster/kubernetes/platform/ingress/ingress-nginx/
+  - cluster/kubernetes/platform/ingress/cloudflared/

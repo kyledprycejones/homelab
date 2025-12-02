@@ -4,7 +4,7 @@
 Deliver a local-first research and prototyping lab that lets Funoffshore rapidly spin up AI-powered services using homelab compute (Ollama-first, optional cloud). Biz2 exists to validate new business ideas quickly, gather data, and graduate the promising ones into production Biz lines.
 
 ## Outcomes
-- Provide a standard multi-agent harness (PM + Architect + Engineer + Researcher + Marketer) wired into `ai/studio`.
+- Provide a standard multi-agent harness (PM + Planner + Engineer + Researcher + Marketer) wired into `ai/studio`.
 - Ship a repeatable workflow for daily digests, opportunity scouting, and experiment tracking.
 - Maintain a rolling backlog of experiments plus lightweight reports for leadership.
 

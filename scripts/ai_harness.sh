@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
-# Runs from your local machine: pushes prox/cluster_bootstrap.sh to the controller via SSH/SCP and executes a stage there.
+#
+# AI HARNESS CONTRACT (long-running CLI loop, Stage 1)
+# - Backlog source: ai/backlog.md (BACKLOG_v1 with TASK_ID/TYPE/TARGET/DESCRIPTION blocks; first unchecked task is processed).
+# - State files: ai/state/last_run.log, ai/state/current_task.json, ai/state/metrics.json.
+# - Logs: logs/executor/executor-YYYYMMDD-HHMMSS.log per loop.
+# - Allowed write paths for CLI: cluster/, infrastructure/, config/, scripts/, docs/, ai/* (never secrets); do not create new top-level dirs; do not touch .gitignore/.sops.yaml/.talos/ beyond documented tasks.
+# - Loop pseudocode:
+#   1) Parse ai/backlog.md, pick first "- [ ] TASK_ID: ..." block (extract TASK_ID, TARGET, DESCRIPTION).
+#   2) Mark ai/state/current_task.json status=running with timestamp.
+#   3) Call Executor/CLI to act on TARGET/DESCRIPTION (implementation-specific).
+#   4) On success: mark task checked in ai/backlog.md, append summary to logs/executor/<ts>.log, update metrics.json and last_run.log, set current_task.status=completed.
+#   5) On failure: leave task unchecked (or add a note), log error, set current_task.status=failed.
+#   6) Stop when no unchecked tasks remain or safety/iteration limit is hit.
+# - This script currently prepares env/branch/config and is the place to embed the above loop logic in future iterations.
+# - When invoked by codex_loop.sh, the following envs are provided for a single task attempt:
+#   TASK_ID, TASK_TYPE, TASK_TARGET, TASK_DESC, LOG_FILE
+#   Respect allowed paths: cluster/, infrastructure/, config/, scripts/, docs/, ai/ (no secrets; do not create new top-level dirs).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,7 +129,7 @@ if [ -z "$WORKERS_RAW" ]; then
 fi
 
 # We disable StrictHostKeyChecking and send host keys to /dev/null so automated runs
-# by Hands do not get stuck or spam known_hosts warnings on the operator's machine.
+# by the Executor do not get stuck or spam known_hosts warnings on the operator's machine.
 SSH_BASE_OPTS=(-T -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
 SCP_BASE_OPTS=(-P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
 if [ -n "$SSH_PASS" ]; then
@@ -134,7 +150,7 @@ mkdir -p logs
 
 quote() { printf "%q" "$1"; }
 
-"${SCP_CMD[@]}" prox/cluster_bootstrap.sh "${TARGET}:/tmp/cluster_bootstrap.sh"
+"${SCP_CMD[@]}" infrastructure/proxmox/cluster_bootstrap.sh "${TARGET}:/tmp/cluster_bootstrap.sh"
 "${SSH_CMD[@]}" "$TARGET" "chmod +x /tmp/cluster_bootstrap.sh"
 
 remote_env=(

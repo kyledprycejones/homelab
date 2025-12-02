@@ -1,0 +1,7 @@
+creation_rules:
+  - path_regex: "cluster/kubernetes/.*/secret(s)?\\.ya?ml"
+    encrypted_regex: "^(data|stringData)$"
+    age: ["age1exampleplaceholderkeychangeme000000000000000000000"]
+  - path_regex: "config/env/.*\\.env"
+    encrypted_regex: ".*"
+    age: ["age1exampleplaceholderkeychangeme000000000000000000000"]

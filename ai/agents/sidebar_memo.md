@@ -1,4 +1,4 @@
-# chatgpt → sidebar memo (Corrected & Final)
+# ChatGPT Desktop → Codex Sidebar memo (Corrected & Final)
 
 Local-Only File Editing • No Git Ops • Human-Push Workflow  
 This memo replaces all prior instructions. It reflects the real Codex sandbox constraints and the human-managed Git model.

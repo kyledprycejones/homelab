@@ -2,7 +2,7 @@
 title: "Biz2 Daily Digest"
 slug: "biz2-digest-YYYYMMDD"
 date: "2025-01-01T12:00:00Z"
-owner: "hands"
+owner: "executor"
 status: "draft"
 tags: ["biz2", "digest"]
 sources:
@@ -24,4 +24,3 @@ Summarize the most important items for today.
 
 - New backlog items for `ai/studio/backlog.md` (Experiment Ideas).
 - Any homelab work that should land in `ai/backlog.md`.
-

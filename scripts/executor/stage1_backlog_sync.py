@@ -44,22 +44,23 @@ class Stage1Task:
 
     def auto_done(self, root: Path) -> bool:
         # Lightweight heuristics to detect clearly satisfied scaffolding.
+        k8s_root = root / "cluster" / "kubernetes"
         if self.key == "cloudflared":
-            base = root / "infra" / "k8s" / "cloudflared"
+            base = k8s_root / "platform" / "ingress" / "cloudflared"
             return all((base / name).exists() for name in ("config.yaml", "deployment.yaml", "kustomization.yaml", "namespace.yaml"))
         if self.key == "ingress":
-            return has_files(root / "infra" / "k8s" / "ingress")
+            return has_files(k8s_root / "platform" / "ingress")
         if self.key == "monitoring":
-            mon = root / "infra" / "k8s" / "monitoring"
+            mon = k8s_root / "platform" / "monitoring"
             return has_files(mon) and has_more_than_keep(mon)
         if self.key == "media-apps":
-            media = root / "infra" / "apps" / "media"
+            media = k8s_root / "apps" / "media"
             return has_more_than_keep(media)
         if self.key == "logging":
-            log = root / "infra" / "k8s" / "logging"
+            log = k8s_root / "platform" / "logging"
             return has_files(log) and has_more_than_keep(log)
         if self.key == "authentik":
-            auth = root / "infra" / "apps" / "tools" / "authentik"
+            auth = k8s_root / "apps" / "tools" / "authentik"
             return has_more_than_keep(auth)
         return False
 
@@ -105,8 +106,10 @@ def render_stage1(existing: Dict[str, bool]) -> List[str]:
     for task in TASKS:
         auto_done = task.auto_done(REPO_ROOT)
         done = existing.get(task.line, None)
-        if done is None:
-            done = auto_done
+        if auto_done:
+            done = True
+        elif done is None:
+            done = False
         checkbox = "x" if done else " "
         out.append(f"- [{checkbox}] {task.line}")
     return out

@@ -7,7 +7,7 @@ Agent prompt kits / modules live here. Each persona should have:
 
 Minimum Biz2 set:
 1. **PM** – backlog triage + research questions.
-2. **Architect** – systems constraints, env + tooling guardrails.
+2. **Planner** – systems constraints, env + tooling guardrails.
 3. **Engineer** – prototype execution details.
 4. **Researcher** – data gathering + digest writing.
 5. **Marketer** – packaging outputs for Biz3/leadership.

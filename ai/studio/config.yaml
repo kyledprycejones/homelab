@@ -14,7 +14,7 @@
     }
   },
   "persona_models": {
-    "architect": {
+    "planner": {
       "tier": "high",
       "llm": "local.ollama",
       "model": "qwen2:7b",
@@ -32,12 +32,12 @@
       "model": "qwen2:7b",
       "remote_fallback": "remote.openai"
     },
-    "junior": {
+    "engineer": {
       "tier": "local",
       "llm": "local.ollama",
       "model": "qwen2:7b"
     },
-    "hands": {
+    "executor": {
       "tier": "local",
       "llm": "local.ollama",
       "model": "deepseek-coder:6.7b"
@@ -48,8 +48,8 @@
       "role": "product manager",
       "tools": ["shell", "fs", "git"]
     },
-    "architect": {
-      "role": "system architect",
+    "planner": {
+      "role": "system planner",
       "tools": ["fs", "git"]
     },
     "engineer": {
