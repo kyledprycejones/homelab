@@ -1,0 +1,5 @@
+*** Begin Patch
+*** Update File: infrastructure/proxmox/cluster_bootstrap.sh
+@@
++# Engineer note for S1-001-RUN-ENG: Investigate and fix the Stage 1 prox-n100 bootstrap script based on recent executor failures (e.g., mkdir '//.talos' permission error). Ensure the Talos directory is created in a user-writable location (such as $HOME/.talos) and that the harness does not require root. Do not run heavy side-effects here; focus on code / path correctness and logging.; error_type=proxmox_error; tail==== [20251203-175048] Starting S1-001-RUN (executor) === === Starting S1-001-RUN (executor) @ 20251203-175048 === [2025-12-03T17:50:48Z] TASK=S1-001-RUN persona=executor target=infrastructure/proxmox/cluster_bootstrap.sh status=running failure_count=0 note=Run Stage 1 bootstrap for prox-n100; stop on first failure and log. == HARNESS START == cluster=prox-n100 stage=all target=kyle@192.168.1.151 log=logs/prox-n100-all-20251203-125050.log HARNESS_START target=prox-n100 stage=all time=Wed Dec  3 1
+*** End Patch

@@ -25,5 +25,5 @@ SUMMARY:
 - Maximum of three attempts per task. After the third failure, add `RES Executor failed thrice – escalating to Engineer.` and stop.
 - Keep all raw stdout/stderr inside `ai/state/last_run.log`, not in stdout.
 - If a command fails hard, append the error snippet to `logs/executor/executor-<timestamp>.log` for later debugging.
-- Update `ai/state/status.json`, `ai/backlog.md`, and `ai/state/human_approvals.md` before exiting.
+- Update `ai/state/status.json`, `ai/backlog.yaml`, and `ai/state/human_approvals.md` before exiting.
 - Git fetch/pull/checkout/add/push are blocked in this sandbox; stick to file edits and at most `git status -sb`.

@@ -29,7 +29,7 @@ PATCH Engineer <path>
 
 ## Editing discipline
 - Prefer the smallest viable patch (single function, section, or config block).
-- Annotate TODOs in-line if the full solution is risky; capture the follow-up in `ai/backlog.md`.
+- Annotate TODOs in-line if the full solution is risky; capture the follow-up in `ai/backlog.yaml`.
 - After three failed attempts to fix an issue, stop and request Planner guidance rather than guessing.
 
 ## When to use Engineer

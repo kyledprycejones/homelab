@@ -3,7 +3,89 @@
   persona: executor
   target: infrastructure/proxmox/cluster_bootstrap.sh
   description: Run Stage 1 bootstrap for prox-n100; stop on first failure and log.
-  status: pending
+  status: waiting_retry
   metadata:
     stage: 1
     cluster: prox-n100
+    next_retry_at: 1764784404.0
+  note: executor retry scheduled
+- task_id: S1-001-RUN-ENG
+  type: edit
+  persona: engineer
+  target: infrastructure/proxmox/cluster_bootstrap.sh
+  description: 'Investigate and fix the Stage 1 prox-n100 bootstrap script based on
+    recent executor failures (e.g., mkdir ''//.talos'' permission error). Ensure the
+    Talos directory is created in a user-writable location (such as $HOME/.talos)
+    and that the harness does not require root. Do not run heavy side-effects here;
+    focus on code / path correctness and logging.
+
+    '
+  status: review
+  metadata:
+    stage: 1
+    parent_task: S1-001-RUN
+  note: patch generated
+- task_id: S1-authentik
+  type: run
+  persona: executor
+  target: ''
+  description: Authentik ingress and SSO wiring
+  status: blocked
+  metadata:
+    stage: 2
+  note: parked until bootstrap is stable
+- task_id: S1-cloudflared
+  type: run
+  persona: executor
+  target: ''
+  description: Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)
+  status: blocked
+  metadata:
+    stage: 2
+  note: parked until bootstrap is stable
+- task_id: S1-ingress
+  type: run
+  persona: executor
+  target: ''
+  description: Ingress / Traefik wiring for sample apps
+  status: blocked
+  metadata:
+    stage: 2
+  note: parked until bootstrap is stable
+- task_id: S1-logging
+  type: run
+  persona: executor
+  target: ''
+  description: Observability/logging stability for CLI loops
+  status: blocked
+  metadata:
+    stage: 2
+  note: parked until bootstrap is stable
+- task_id: S1-media-apps
+  type: run
+  persona: executor
+  target: ''
+  description: Sample media apps (Arrs, Jellyfin, qBittorrent, etc.) manifests
+  status: blocked
+  metadata:
+    stage: 2
+  note: parked until bootstrap is stable
+- task_id: S1-monitoring
+  type: run
+  persona: executor
+  target: ''
+  description: Monitoring stack (Prometheus / Grafana / Loki) scaffolding
+  status: blocked
+  metadata:
+    stage: 2
+  note: parked until bootstrap is stable
+- task_id: S1-001-RUN-ENG-REVIEW
+  type: design
+  persona: planner
+  target: ai/patches/S1-001-RUN-ENG.diff
+  description: Review engineer patch for S1-001-RUN-ENG before applying.
+  status: pending
+  metadata:
+    stage: 1
+    parent_task: S1-001-RUN-ENG
+  note: auto-escalated from S1-001-RUN-ENG

@@ -21,7 +21,7 @@ This directory houses the AI company personas (Planner, Engineer, Executor, Robo
 Full prompt text lives under `ai/agents/`.
 
 ## Backlog + Harness
-- `ai/backlog.md` – single source of Stage 1 tasks (BACKLOG_v1, S1-xxx).
+- `ai/backlog.yaml` – single source of Stage 1 tasks (BACKLOG_v1, S1-xxx).
 - `ai/state/` – state files for long-running CLI loops (current_task.json, metrics.json, last_run.log).
 - `logs/executor/` – per-run logs for Executor/CLI loops.
 - `scripts/ai_harness.sh` – orchestrator entrypoint; documents the backlog/state/log contract and will drive unattended runs.

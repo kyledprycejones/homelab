@@ -2,7 +2,7 @@
 set -euo pipefail
 
 : "${BACKLOG_YAML:=ai/backlog.yaml}"
-: "${ORCH_CONFIG:=ai/orchestrator/config.yaml}"
+: "${ORCH_CONFIG:=ai/config/config.yaml}"
 
 # Ensure PyYAML is available
 python3 - <<'PY' >/dev/null 2>&1
@@ -41,46 +41,115 @@ PY
 }
 
 # Select next eligible task with ordering rules
-# Priority: executor run -> executor other -> engineer -> planner, then stage, then original order
-# Skip waiting_retry with future next_retry_at; if waiting_retry expired, move to pending
-# Also promotes eligible waiting_retry tasks back to pending in-place
-
+# Priority: engineer pending -> executor pending w/ target -> planner pending -> due waiting_retry
+# Stage filter protects against running higher-stage work when STAGE != metadata.stage.
 yaml_next_task() {
   python3 - "$BACKLOG_YAML" <<'PY'
-import sys, time, json, warnings, yaml
+import json, os, re, sys, time, warnings, yaml
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 path = sys.argv[1]
 backlog = yaml.safe_load(open(path, encoding="utf-8")) or []
-changed = False
 now = time.time()
+changed = False
+
 for entry in backlog:
-    if entry.get("status") == "waiting_retry":
-        next_retry = entry.get("metadata",{}).get("next_retry_at")
+    status = entry.get("status")
+    if status == "waiting_retry":
+        next_retry = entry.get("metadata", {}).get("next_retry_at")
         if next_retry is not None and now >= float(next_retry):
             entry["status"] = "pending"
             entry.setdefault("metadata", {}).pop("next_retry_at", None)
             changed = True
+
 if changed:
     with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(backlog, f, sort_keys=False)
 
-# Filter pending tasks
-candidates = []
+stage_raw = os.environ.get("STAGE", "0")
+try:
+    stage_env = int(stage_raw)
+except Exception:
+    match = re.search(r"(\\d+)", stage_raw or "")
+    stage_env = int(match.group(1)) if match else 0
+
+def normalize_stage(value, default=1):
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return int(value)
+    try:
+        return int(value)
+    except Exception:
+        match = re.search(r"(\\d+)", str(value))
+        if match:
+            return int(match.group(1))
+    return default
+
+pending_engineer = []
+pending_executor = []
+pending_planner = []
+waiting_retry_due = []
+
 for idx, entry in enumerate(backlog):
-    if entry.get("status") != "pending":
+    status = entry.get("status")
+    metadata = entry.get("metadata", {}) or {}
+    entry_stage = normalize_stage(metadata.get("stage"), 1)
+    if entry_stage != stage_env:
         continue
-    persona = entry.get("persona", "executor")
-    ttype = entry.get("type", "run")
-    stage = entry.get("metadata", {}).get("stage", 1)
-    persona_rank = {"executor":0, "engineer":1, "planner":2}.get(persona, 3)
-    exec_type_rank = 0 if (persona == "executor" and ttype == "run") else 1
-    candidates.append((persona_rank, exec_type_rank, stage, idx, entry))
+    if status == "pending":
+        persona = entry.get("persona", "executor")
+        target = (entry.get("target") or "").strip()
+        row = (entry_stage, entry.get("task_id", ""), idx, entry)
+        if persona == "engineer":
+            pending_engineer.append(row)
+        elif persona == "executor" and target:
+            pending_executor.append(row)
+        elif persona == "planner":
+            pending_planner.append(row)
+    elif status == "waiting_retry":
+        next_retry = metadata.get("next_retry_at")
+        if next_retry is not None and now >= float(next_retry):
+            waiting_retry_due.append((entry_stage, entry.get("task_id", ""), idx, entry))
 
-if not candidates:
-    sys.exit(1)
+def choose_candidates(bucket):
+    if not bucket:
+        return None
+    bucket.sort()
+    return bucket[0][-1]
 
-candidates.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
-print(json.dumps(candidates[0][-1]))
+for bucket in (pending_engineer, pending_executor, pending_planner, waiting_retry_due):
+    candidate = choose_candidates(bucket)
+    if candidate is not None:
+        print(json.dumps(candidate))
+        sys.exit(0)
+
+sys.exit(1)
+PY
+}
+
+yaml_count_pending() {
+  local backlog="$1"
+  local persona="${2:-executor}"
+  python3 - "$backlog" "$persona" <<'PY'
+import sys, json, warnings, yaml
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+path, persona = sys.argv[1:3]
+data = yaml.safe_load(open(path, encoding="utf-8")) or []
+count = sum(1 for entry in data if entry.get("status") == "pending" and entry.get("persona", "executor") == persona)
+print(count)
+PY
+}
+
+yaml_task_exists(){
+  local tid="$1"
+  python3 - "$BACKLOG_YAML" "$tid" <<'PY'
+import sys, yaml
+path, tid = sys.argv[1:3]
+data = yaml.safe_load(open(path, encoding="utf-8")) or []
+for entry in data:
+    if entry.get("task_id") == tid:
+        sys.exit(0)
+sys.exit(1)
 PY
 }
 

@@ -3,7 +3,8 @@ set -euo pipefail
 
 classify_error(){
   local tail="$1"
-  local lower="${tail,,}"
+  local lower
+  lower="$(printf '%s' "$tail" | tr '[:upper:]' '[:lower:]')"
   ERROR_HASH="$(printf '%s' "$tail" | shasum | awk '{print $1}')"
   if [[ "$lower" == *"permission"* ]]; then ERROR_TYPE="permission_denied"; return; fi
   if [[ "$lower" == *"no such file"* || "$lower" == *"cannot open"* ]]; then ERROR_TYPE="missing_file"; return; fi

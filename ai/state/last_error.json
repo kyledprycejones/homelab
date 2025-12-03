@@ -2,8 +2,8 @@
   "task_id": "S1-001-RUN",
   "persona": "executor",
   "command": "infrastructure/proxmox/cluster_bootstrap.sh",
-  "stderr_tail": "Remote bootstrap command: /tmp/cluster_bootstrap.sh all  == Starting stage: all ==  == STAGE [precheck] START == Config: CTRL_IP=192.168.1.151 SSH_USER=kyle SSH_PORT=22 PASS=***** WORKERS=192.168.1.152 192.168.1.153 DOMAIN=funoffshore.com GIT_BRANCH=main Cloudflare: API=*** TUNNEL=eyJh***eSJ9 ORIGIN_CA=***  == Checking SSH connectivity == - 192.168.1.151: ok - 192.168.1.152: ok - 192.168.1.153: ok  == STAGE [precheck] COMPLETE ==  == STAGE [k3s] START == mkdir: cannot create directory ‘//.talos’",
-  "error_hash": "3ccd739fcb0fe97722ac2ed9502ed34916d9510a",
+  "stderr_tail": "=== [20251203-175218] Starting S1-001-RUN (executor) === === Starting S1-001-RUN (executor) @ 20251203-175218 === [2025-12-03T17:52:18Z] TASK=S1-001-RUN persona=executor target=infrastructure/proxmox/cluster_bootstrap.sh status=running failure_count=0 note=Run Stage 1 bootstrap for prox-n100; stop on first failure and log. == HARNESS START == cluster=prox-n100 stage=all target=kyle@192.168.1.151 log=logs/prox-n100-all-20251203-125220.log HARNESS_START target=prox-n100 stage=all time=Wed Dec  3 1",
+  "error_hash": "a4edfe996f8b5e272f003e25d6f4a159781412ca",
   "failure_count": 1,
-  "classification": "ssh_failure"
+  "classification": "proxmox_error"
 }

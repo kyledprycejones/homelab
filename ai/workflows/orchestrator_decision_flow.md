@@ -4,7 +4,7 @@ This guide mirrors `ai/agents/orchestrator.md` but condenses it into a checklist
 
 ## 1. Context sweep (minimum read)
 1. `ai/mission.md` (Stage 1 vs Stage 2, completion checkboxes)
-2. `ai/backlog.md` (Stage 1 only until unlocked)
+2. `ai/backlog.yaml` (Stage 1 only until unlocked)
 3. `ai/state/status.json` (stage, needs_human, question)
 4. `ai/state/human_approvals.md`
 5. Most recent relevant log (`ai/state/last_run.log` or targeted file under `logs/ai/`)
@@ -19,9 +19,9 @@ Skip everything else unless the backlog item explicitly cites it.
 
 | Mode trigger | Allowed paths |
 | --- | --- |
-| Task mentions `ui` or `logs` | `ui/**`, `logs/**`, `ai/state/*.json`, `ai/backlog.md` |
-| Stage 2 Biz2/Biz3 (only after unlock) | `ai/studio/**`, `ai/backlog.md`, `ai/state/*.json`, `ui/logs/public/**`, Biz2/Biz3 directories |
-| Stage 1 bootstrap/infrastructure/talos/flux/harness | `infrastructure/proxmox/**`, `cluster/**`, `scripts/ai_harness.sh`, `config/**`, `logs/ai/**`, `ai/backlog.md`, sample app manifests |
+| Task mentions `ui` or `logs` | `ui/**`, `logs/**`, `ai/state/*.json`, `ai/backlog.yaml` |
+| Stage 2 Biz2/Biz3 (only after unlock) | `ai/studio/**`, `ai/backlog.yaml`, `ai/state/*.json`, `ui/logs/public/**`, Biz2/Biz3 directories |
+| Stage 1 bootstrap/infrastructure/talos/flux/harness | `infrastructure/proxmox/**`, `cluster/**`, `scripts/ai_harness.sh`, `config/**`, `logs/ai/**`, `ai/backlog.yaml`, sample app manifests |
 | Anything else | Only the specific files referenced plus the mandatory state files |
 
 If Executor needs to step outside `allowed_paths`, stop. Engineer may expand scope when necessary; if expansion touches red-line areas (DNS/Cloudflare/PVC/VM/secret/tunnel), stop and seek approval. Never read `ai/studio/**` while Stage 1 is in progress.
@@ -60,7 +60,7 @@ Nothing else belongs in stdout. Raw command transcripts live only in `ai/state/l
 
 ## 6. State updates
 - `ai/state/status.json` – persona, task, iteration, timestamp, `last_exit_reason`.
-- `ai/backlog.md` – mark `[x]` on success only.
+- `ai/backlog.yaml` – mark `[x]` on success only.
 - `ai/state/last_run.log` – full technical transcript (commands, stdout/stderr, context notes).
 - `ai/state/human_approvals.md` – append pending approvals and pause if blocked.
 - `logs/executor/executor-<timestamp>.log` – only when Executor records a failure.

@@ -59,7 +59,9 @@ Core principles:
 ## Stage Progress Snapshot
 
 The project is organized into stages. Each stage has an unlock condition that protects focus.
-
+- **Stage 0 – Develop AI orchestrator**  
+	Scope: Using chatgpt and codex, develop a split persona model AI that can be run continuously in codex CLI.
+	
 - **Stage 1 – Homelab Bring-Up**  
   Scope: Proxmox + Talos-managed Kubernetes + Flux; ingress, tunnel, basic monitoring, storage, sample apps.  
   Status: Active (in progress).  
@@ -80,7 +82,7 @@ The project is organized into stages. Each stage has an unlock condition that pr
   Status: Vision only (R&D).  
   Unlock condition: Homelab and AI Studio are mature and stable enough to treat CPiaB as a product track.
 
-Stage details and checklists live in `ai/mission.md`. The active backlog lives in `ai/backlog.md` (Stage 1 items may be auto-synced by scripts).
+Stage details and checklists live in `ai/mission.md`. The active backlog lives in `ai/backlog.yaml` (Stage 1 items may be auto-synced by scripts).
 
 ---
 
@@ -199,7 +201,7 @@ Key components and directories:
 - `ai/state/` – Run logs, last-run markers, stage flags, and other orchestrator state.
 - `ui/studio/` (future) – Minimal web UI for viewing runs, tasks, and backlog links.
 
-**Stage 2 outcome:** A working AI Studio that can take a ticket from `ai/backlog.md`, produce a plan, generate code or manifests, and propose commands for the operator, all under guardrails.
+**Stage 2 outcome:** A working AI Studio that can take a ticket from `ai/backlog.yaml`, produce a plan, generate code or manifests, and propose commands for the operator, all under guardrails.
 
 ---
 
@@ -278,7 +280,7 @@ The combination of these personas forms a closed-loop, multi-agent pipeline to e
 
 At the repo level, an AI orchestrator manages work through three internal personas:
 
-- **Planner** – Reads mission and backlog (`ai/mission.md` and `ai/backlog.md`); proposes high-level plans and decomposes goals into tasks; prioritizes which tasks to attempt in a given loop.
+- **Planner** – Reads mission and backlog (`ai/mission.md` and `ai/backlog.yaml`); proposes high-level plans and decomposes goals into tasks; prioritizes which tasks to attempt in a given loop.
 - **Engineer** – Translates tasks into concrete code and configuration changes; edits files in the repository following directory and stage constraints; proposes diffs, tests, and validation steps.
 - **Executor** – Proposes or runs the necessary commands to apply changes (for example running scripts, triggering GitOps sync, or verifying cluster state); captures logs and outcomes into `ai/state/` and external log files; reports success or failure back to Planner and Engineer.
 
@@ -318,7 +320,7 @@ High-level directory map:
 - `cluster/` – Talos templates and Kubernetes GitOps tree (for example: `kubernetes/flux`, `kubernetes/platform`, `kubernetes/apps`).
 - `infrastructure/` – Proxmox VM bootstrap scripts (`infrastructure/proxmox/`) and room for future Terraform/Ansible.
 - `config/` – Cluster definitions and environment files (`config/clusters/`, `config/env/`). No real secrets live here.
-- `scripts/` – Local helper scripts such as `bootstrap_cluster.sh`, `check_cluster.sh`, `host_bootstrap.sh`, and other orchestration helpers.
+- `scripts/` – Local helper scripts such as `check_cluster.sh`, `host_bootstrap.sh`, and other orchestration helpers.
 - `synology/` – NAS and NFS/SMB configuration scripts or notes.
 - `ai/` – Mission, backlog, persona prompts, AI Studio scaffolding, orchestrator state.
 - `logs/` – Execution logs (gitignored); bootstrap scripts write timestamped logs here.
@@ -389,14 +391,14 @@ The orchestrator must not jump ahead to Stage 2 or Stage 3 work while Stage 1 is
 1. Ensure Stage 1 is at least partially running and the repo is cloned locally.
 2. Configure AI and tool credentials (OpenAI keys, local model endpoints, etc.) according to the harness scripts you use.
 3. From the repo root, run the orchestrator harness script with the desired target, for example a script that:
-   - Reads `ai/mission.md` and `ai/backlog.md`
+   - Reads `ai/mission.md` and `ai/backlog.yaml`
    - Invokes Planner / Engineer / Executor loops
    - Proposes diffs or changes
    - Writes logs into `ai/state/` and `logs/`
 4. Review proposed diffs and commands as a human operator:
    - Accept or reject changes
    - Run the safe commands to apply changes (for example applying manifests, restarting Flux, etc.)
-5. Observe effects on the cluster using the monitoring stack and adjust `ai/mission.md` and `ai/backlog.md` as needed.
+5. Observe effects on the cluster using the monitoring stack and adjust `ai/mission.md` and `ai/backlog.yaml` as needed.
 
 ---
 

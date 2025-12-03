@@ -41,7 +41,15 @@ TALOS_CLUSTER_NAME="${TALOS_CLUSTER_NAME:-prox-n100}"
 TALOS_ENDPOINTS="${TALOS_ENDPOINTS:-$CTRL_IP}"
 
 # Where to store Talos cluster config + kubeconfig on the host running this script
-TALOS_CONFIG_DIR="${TALOS_CONFIG_DIR:-${REPO_ROOT}/.talos/${TALOS_CLUSTER_NAME}}"
+# Use $HOME/.talos when running remotely (script copied to /tmp)
+# Only use REPO_ROOT/.talos if REPO_ROOT is set and not root directory
+if [ -n "${TALOS_CONFIG_DIR:-}" ]; then
+  : # Use explicit override
+elif [ -n "${REPO_ROOT:-}" ] && [ "${REPO_ROOT}" != "/" ] && [ "${REPO_ROOT}" != "/tmp" ]; then
+  TALOS_CONFIG_DIR="${REPO_ROOT}/.talos/${TALOS_CLUSTER_NAME}"
+else
+  TALOS_CONFIG_DIR="${HOME}/.talos/${TALOS_CLUSTER_NAME}"
+fi
 TALOS_KUBECONFIG="${TALOS_KUBECONFIG:-${TALOS_CONFIG_DIR}/kubeconfig}"
 
 # Default install disk for Talos nodes (override if needed)
