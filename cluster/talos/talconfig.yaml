@@ -1,14 +1,19 @@
 # Placeholder Talos cluster config (non-secret).
-# Aligns with config/clusters/prox-n100.yaml.
+# Aligns with config/clusters/prox-n100.yaml and serves as a template for documenting
+# DHCP-assigned or statically provisioned Talos node IPs.
 clusterName: prox-n100
-endpoint: https://192.168.1.151:6443
+endpoint: https://<CONTROL_PLANE_IP>:6443
 nodes:
   - role: controlplane
-    ip: 192.168.1.151
+    name: talos-cp-1
+    ip: <CONTROL_PLANE_IP>
   - role: worker
-    ip: 192.168.1.152
+    name: talos-w-1
+    ip: <WORKER_1_IP>
   - role: worker
-    ip: 192.168.1.153
+    name: talos-w-2
+    ip: <WORKER_2_IP>
 notes:
   - Generate real configs with talosctl using values from config/clusters/.
   - Do not commit machine secrets; .talos/ is ignored.
+  - Node names above should match the VMs provisioned by infrastructure/proxmox/vms.sh.

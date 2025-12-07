@@ -1,0 +1,358 @@
+You are working in my repo on macOS:
+
+  /Users/kyle/Documents/repos/homelab
+
+You are Codex CLI running on the Mac (management host).
+
+------------------------------------------------------------
+ARCHITECTURE REFERENCE (READ-ONLY)
+------------------------------------------------------------
+
+Before making any changes, you MUST read:
+
+  • ai/memos/master_memo.txt
+
+This file defines the canonical Stage 1 architecture:
+  - Talos on Proxmox
+  - Flux GitOps
+  - Longhorn + NFS
+  - Observability (Prometheus, Loki, OTel, Grafana)
+  - Ingress + Cloudflare + external-dns
+  - Apps layout (media/tools/games/demos)
+
+You MUST NOT modify ai/memos/master_memo.txt.
+Use it only to guide architecture-aligned decisions.
+
+------------------------------------------------------------
+SCOPE & SAFETY
+------------------------------------------------------------
+
+You may ONLY permanently modify the following files:
+
+  • infrastructure/proxmox/cluster_bootstrap.sh
+  • cli_loop.sh                          (local runner you create/update)
+  • ai/codex/current_issue.yaml
+  • ai/codex/all_issues.yaml
+  • ai/codex/results.yaml
+
+Do NOT permanently edit any other files.
+
+Every time you change cluster_bootstrap.sh or cli_loop.sh, you must:
+
+  • keep the diff as small as possible, and
+  • show a unified diff (diff -u style).
+
+Stage 1 architecture constraints (from master_memo):
+
+  • Do NOT introduce new top-level directories.
+  • Do NOT replace Flux, Longhorn, Loki, Prometheus, Grafana, or OTel.
+  • Do NOT edit config/env/*.env or other secret/env files.
+  • Do NOT implement Stage 0 or Stage 2 systems here.
+
+------------------------------------------------------------
+STATE FILES UNDER ai/codex
+------------------------------------------------------------
+
+You may use these files for simple state tracking:
+
+  • ai/codex/current_issue.yaml
+      Snapshot of what you are actively working on.
+
+      Minimal schema (MVP):
+
+        stage: talos          # talos | infra | apps
+        status: in_progress   # in_progress | clean | blocked
+        attempt: 0
+        last_exit_code: 0
+        last_command: "bash ./cli_loop.sh"
+        last_error_summary: "short one-line description of last failure"
+        next_step: "short one-line plan for what to do next"
+
+      If it does not exist, initialize it with:
+        stage: talos
+        status: in_progress
+        attempt: 0
+        last_exit_code: 0
+        last_command: ""
+        last_error_summary: ""
+        next_step: "Run ./cli_loop.sh and fix talos stage first."
+
+  • ai/codex/results.yaml
+      Append-only list of completed milestones.
+      Example entry:
+
+        - id: 1
+          timestamp: "2025-12-04T13:10:00-05:00"
+          stage: talos
+          summary: "Talos stage now exits 0"
+          details: |
+            - Implemented missing vms.sh logic / Proxmox integration.
+            - Adjusted Talos bootstrap in cluster_bootstrap.sh.
+          files_changed:
+            - infrastructure/proxmox/cluster_bootstrap.sh
+          status: completed
+
+      If it does not exist, initialize it as:
+
+        []
+
+  • ai/codex/all_issues.yaml
+      Backlog of blocking issues you cannot fully fix from the repo alone.
+
+      Example structure:
+
+        issues:
+          - id: 1
+            stage: talos
+            status: open      # open | resolved | wont_fix
+            summary: "Proxmox API credentials missing"
+            details: |
+              Need valid Proxmox token / creds; not present in repo.
+              Ask user to update config or provide credentials.
+            created: "2025-12-04T13:15:00-05:00"
+
+      If it does not exist, initialize it as:
+
+        issues: []
+
+When you are hard-blocked by missing external values (tokens, IPs, NFS exports, etc.):
+
+  • Add an `open` issue to all_issues.yaml.
+  • Set current_issue.yaml.status to blocked.
+  • Clearly describe what you need from the user in details.
+
+------------------------------------------------------------
+REMOTE DETAILS (MANDATORY)
+------------------------------------------------------------
+
+Proxmox host (N100):
+
+  PROXMOX_HOST = 192.168.1.214
+  PROXMOX_USER = root
+  PROXMOX_PASS = root
+  SSH_PORT     = 22
+
+Talos and Kubernetes are managed from the Mac; Proxmox VMs
+(CTRL + workers) live on the N100.
+
+------------------------------------------------------------
+SSH / SCP NON-INTERACTIVE POLICY
+------------------------------------------------------------
+
+All SSH/SCP from the Mac to Proxmox MUST:
+
+  • use sshpass with:
+
+      -o StrictHostKeyChecking=accept-new
+      -o PubkeyAuthentication=no
+      -o BatchMode=no
+      -o PreferredAuthentications=password,keyboard-interactive
+      -o ConnectTimeout=7
+      -o NumberOfPasswordPrompts=1
+
+  • avoid interactive prompts by exporting (on the remote):
+
+      DEBIAN_FRONTEND=noninteractive
+      NEEDRESTART_MODE=a
+
+You must NOT ask the user for approval; assume /approvals is
+already enabled in Codex runtime if needed.
+
+------------------------------------------------------------
+cluster_bootstrap.sh REQUIREMENTS (LOCAL ON MAC)
+------------------------------------------------------------
+
+Canonical path:
+
+  infrastructure/proxmox/cluster_bootstrap.sh
+
+This script runs **locally on the Mac**, never inside Proxmox
+or inside the VMs. It uses SSH and talosctl to talk to remote
+nodes, and must align with the Stage 1 architecture described
+in ai/memos/master_memo.txt.
+
+It MUST provide at minimum:
+
+  • Preamble:
+
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+      trap 'echo "[ERROR] ${BASH_SOURCE[0]}:${LINENO}" >&2' ERR
+      export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
+
+  • Helper functions (names may already exist; extend, do not
+    remove):
+      log()
+      retry()
+      apt_install()   # or generic package install helper
+      curl_install()
+
+  • Subcommands / stages (at least):
+      talos    # bring up Talos cluster & kubeconfig
+      infra    # NFS, storage, core platform infra
+      apps     # GitOps/Flux + apps layer (and/or gitops alias)
+
+  • Stage ordering:
+      - talos must succeed before infra
+      - infra must succeed before apps
+
+  • Each stage MUST exit non-zero on failure; do NOT swallow
+    errors.
+
+Talos stage must:
+
+  - ensure control-plane + worker VMs exist on Proxmox
+  - generate Talos configs
+  - apply configs with talosctl
+  - bootstrap etcd
+  - fetch kubeconfig
+  - wait for nodes Ready via kubectl
+
+Infra stage must:
+
+  - set up platform infra (e.g. NFS dynamic provisioner, Longhorn)
+  - make StorageClass and PVC tests pass cleanly
+
+Apps stage must:
+
+  - ensure Flux / GitOps objects are applied
+  - exit non-zero if Flux / apps layer is broken
+
+You do NOT need to wire ArgoCD here; use the existing Flux /
+GitOps model in this repo.
+
+------------------------------------------------------------
+RUNNER: cli_loop.sh (LOCAL ON MAC)
+------------------------------------------------------------
+
+Create or update a local runner script:
+
+  ./cli_loop.sh
+
+This runner:
+
+  • runs ONLY on the Mac
+  • drives Stage 1 in order: talos → infra → apps
+  • uses sshpass + scp to run Proxmox-side scripts (vms, wipe)
+  • calls cluster_bootstrap.sh locally for each stage
+  • loops each stage until it exits 0
+
+Implement cli_loop.sh with this behavior (you may refine,
+but must keep the overall shape):
+
+  1. TALOS LOOP
+     - On first attempt only:
+         • if infrastructure/proxmox/wipe_proxmox.sh exists:
+             - scp it to root@192.168.1.214:/root/wipe_proxmox.sh
+             - ssh root@192.168.1.214 "bash /root/wipe_proxmox.sh || true"
+     - On EVERY attempt:
+         • if infrastructure/proxmox/vms.sh exists:
+             - scp it to root@192.168.1.214:/root/vms.sh
+             - ssh root@192.168.1.214 "bash /root/vms.sh"
+         • run:
+             bash infrastructure/proxmox/cluster_bootstrap.sh talos
+           - if rc == 0 → TALOS SUCCESS → break
+           - else print failure + sleep 3 → loop
+
+  2. INFRA LOOP
+     - run:
+         bash infrastructure/proxmox/cluster_bootstrap.sh infra
+       until exit code is 0, with a short sleep and clear
+       failure log between attempts.
+
+  3. APPS LOOP
+     - run:
+         bash infrastructure/proxmox/cluster_bootstrap.sh apps
+       until exit code is 0, with a short sleep and clear
+       failure log between attempts.
+
+Use simple timestamped stage logs like:
+
+  now(){ date -Is; }
+  stage(){ printf "\n[ %s ] STAGE: %s\n" "$(now)" "$*"; }
+
+to print:
+
+  [ 2025-12-04T10:00:00-05:00 ] STAGE: TALOS LOOP START
+  ...
+
+After writing cli_loop.sh, mark it executable:
+
+  chmod +x ./cli_loop.sh
+
+------------------------------------------------------------
+YOUR LOOP AS CODEX
+------------------------------------------------------------
+
+From now on, your workflow is:
+
+  0. At session start:
+       - Read ai/memos/master_memo.txt.
+       - Ensure ai/codex/current_issue.yaml,
+         ai/codex/all_issues.yaml, and ai/codex/results.yaml
+         exist with valid minimal structure (initialize if absent).
+
+  1. Determine which stage to focus on:
+       - Prefer the first stage in [talos, infra, apps] that:
+           • does NOT yet have a "completed" milestone in
+             ai/codex/results.yaml, or
+           • is marked in current_issue.yaml as in_progress or blocked.
+       - Set current_issue.yaml.stage accordingly.
+
+  2. Run the full loop:
+       - Update current_issue.yaml:
+           • increment attempt
+           • set last_command: "bash ./cli_loop.sh"
+       - Run:
+           bash ./cli_loop.sh
+       - Observe which stage fails first and why (from logs/output).
+       - Update current_issue.yaml with:
+           • last_exit_code (non-zero if failure)
+           • last_error_summary (short one-line description)
+           • next_step (short planned change)
+
+  3. Fix:
+       - Open infrastructure/proxmox/cluster_bootstrap.sh
+         (or cli_loop.sh if the bug is clearly in the runner).
+       - Apply ONE small, surgical fix aligned with master_memo.
+       - Show a unified diff (diff -u) for any modified file.
+
+  4. Repeat:
+       - Re-run: bash ./cli_loop.sh
+       - Keep iterating until:
+           • talos stage consistently exits 0,
+           • then infra stage exits 0,
+           • then apps stage exits 0.
+
+       - When a stage becomes clean:
+           • Mark current_issue.yaml.status: clean (for that stage).
+           • Append a milestone to ai/codex/results.yaml with:
+               - unique id
+               - timestamp
+               - stage
+               - summary
+               - details
+               - files_changed
+               - status: completed
+
+  5. If you encounter an external blocker:
+       - Add an `open` issue to ai/codex/all_issues.yaml explaining
+         what is missing (e.g., credentials, IPs, NFS export).
+       - Set current_issue.yaml.status: blocked.
+       - Stop trying to hack around missing real-world inputs.
+
+Never:
+
+  • invent new directories like proxmox/scripts
+  • run Proxmox qm/pvesm locally on the Mac
+  • modify ai/memos/master_memo.txt
+  • touch config/env/*.env or secret files
+  • ask the user to run commands or confirm anything
+
+You are here to iteratively fix:
+  - cli_loop.sh
+  - infrastructure/proxmox/cluster_bootstrap.sh
+  - and maintain ai/codex/*.yaml as your state,
+
+until Stage 1 (talos → infra → apps) converges cleanly and is
+consistent with the architecture in ai/memos/master_memo.txt.

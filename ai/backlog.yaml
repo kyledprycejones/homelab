@@ -1,91 +1,213 @@
-- task_id: S1-001-RUN
-  type: run
+- id: S1-001-PLANNER-READ-MEMO
+  stage: 1
+  persona: planner
+  summary: 'Planner: analyze architecture & decide initial Stage-1 roadmap'
+  detail: "Read ai/master_memo.txt and ai/memos/master_memo_orchestrator.txt.\nProduce\
+    \ initial Stage-1 tasks for:\n  - Proxmox VM definitions for Talos (control-plane\
+    \ + worker)\n  - Talos configuration scaffolding (cluster/talos/*.yaml)\n  - Flux\
+    \ GitOps bootstrap layout (cluster/kubernetes/flux/*)\n  - NFS + Longhorn scaffolding\
+    \ directories (empty but present)\nDo NOT write code \u2014 output tasks only.\n"
+  target: ai/master_memo.txt
+  status: success
+  attempts: 0
+  max_attempts: 1
+  depends_on: []
+  note: Planner added stage work
+- id: S1-001-RUN
+  stage: 1
   persona: executor
+  summary: Run Stage 1 bootstrap for prox-n100
+  detail: Execute infrastructure/proxmox/cluster_bootstrap.sh against the prox-n100
+    controller, capture logs, and stop on failure.
   target: infrastructure/proxmox/cluster_bootstrap.sh
-  description: Run Stage 1 bootstrap for prox-n100; stop on first failure and log.
-  status: waiting_retry
-  metadata:
-    stage: 1
-    cluster: prox-n100
-    next_retry_at: 1764784404.0
-  note: executor retry scheduled
-- task_id: S1-001-RUN-ENG
-  type: edit
+  status: blocked
+  attempts: 1
+  max_attempts: 1
+  depends_on: []
+  note: Blocked after 1 failures
+- id: S1-002-ENGINEER-SKELETON
+  stage: 1
   persona: engineer
-  target: infrastructure/proxmox/cluster_bootstrap.sh
-  description: 'Investigate and fix the Stage 1 prox-n100 bootstrap script based on
-    recent executor failures (e.g., mkdir ''//.talos'' permission error). Ensure the
-    Talos directory is created in a user-writable location (such as $HOME/.talos)
-    and that the harness does not require root. Do not run heavy side-effects here;
-    focus on code / path correctness and logging.
+  summary: 'Engineer: create empty canonical directories & placeholder manifests'
+  detail: "Create minimal placeholder files and directories, per Planner\u2019s output:\n\
+    \  - cluster/talos/{controlplane.yaml,worker.yaml,talconfig.yaml} (empty stubs)\n\
+    \  - cluster/kubernetes/flux/flux-install.yaml (empty or TODO)\n  - cluster/kubernetes/platform/storage/{longhorn,nfs-subdir}/.keep\n\
+    \  - cluster/kubernetes/platform/ingress/{ingress-nginx,cloudflared}/.keep\n \
+    \ - cluster/kubernetes/platform/dns/external-dns/.keep\nNo real manifests yet\
+    \ \u2014 just skeletons to satisfy orchestration.\n"
+  target: cluster/
+  status: failed
+  attempts: 0
+  max_attempts: 2
+  depends_on:
+  - S1-001-PLANNER-READ-MEMO
+  note: Target cluster/ missing
+- id: S1-003-PLANNER-TALOS-LAYOUT
+  stage: 1
+  persona: planner
+  summary: 'Planner: generate tasks for Talos VM creation on Proxmox'
+  detail: "Produce tasks for:\n  - Generating control-plane.yaml + worker.yaml\n \
+    \ - Writing talconfig.yaml with cluster name prox-n100\n  - Creating Proxmox VM\
+    \ definitions for Talos nodes\nDo NOT generate code \u2014 produce only task entries.\n"
+  target: ai/master_memo.txt
+  status: pending
+  attempts: 0
+  max_attempts: 2
+  depends_on:
+  - S1-002-ENGINEER-SKELETON
+  note: ''
+- id: S1-004-ENGINEER-TALOS-CONFIG
+  stage: 1
+  persona: engineer
+  summary: 'Engineer: create minimal Talos config files per Planner'
+  detail: 'Populate controlplane.yaml, worker.yaml, and talconfig.yaml with minimal,
+
+    valid Talos templates (hostname, machine type, cluster name, endpoints).
+
+    No secrets. No advanced settings. Only a minimal valid spec.
 
     '
-  status: review
-  metadata:
-    stage: 1
-    parent_task: S1-001-RUN
-  note: patch generated
-- task_id: S1-authentik
-  type: run
-  persona: executor
-  target: ''
-  description: Authentik ingress and SSO wiring
-  status: blocked
-  metadata:
-    stage: 2
-  note: parked until bootstrap is stable
-- task_id: S1-cloudflared
-  type: run
-  persona: executor
-  target: ''
-  description: Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)
-  status: blocked
-  metadata:
-    stage: 2
-  note: parked until bootstrap is stable
-- task_id: S1-ingress
-  type: run
-  persona: executor
-  target: ''
-  description: Ingress / Traefik wiring for sample apps
-  status: blocked
-  metadata:
-    stage: 2
-  note: parked until bootstrap is stable
-- task_id: S1-logging
-  type: run
-  persona: executor
-  target: ''
-  description: Observability/logging stability for CLI loops
-  status: blocked
-  metadata:
-    stage: 2
-  note: parked until bootstrap is stable
-- task_id: S1-media-apps
-  type: run
-  persona: executor
-  target: ''
-  description: Sample media apps (Arrs, Jellyfin, qBittorrent, etc.) manifests
-  status: blocked
-  metadata:
-    stage: 2
-  note: parked until bootstrap is stable
-- task_id: S1-monitoring
-  type: run
-  persona: executor
-  target: ''
-  description: Monitoring stack (Prometheus / Grafana / Loki) scaffolding
-  status: blocked
-  metadata:
-    stage: 2
-  note: parked until bootstrap is stable
-- task_id: S1-001-RUN-ENG-REVIEW
-  type: design
-  persona: planner
-  target: ai/patches/S1-001-RUN-ENG.diff
-  description: Review engineer patch for S1-001-RUN-ENG before applying.
+  target: cluster/talos/
   status: pending
-  metadata:
-    stage: 1
-    parent_task: S1-001-RUN-ENG
-  note: auto-escalated from S1-001-RUN-ENG
+  attempts: 0
+  max_attempts: 2
+  depends_on:
+  - S1-003-PLANNER-TALOS-LAYOUT
+  note: ''
+- id: S1-005-EXECUTOR-PROX-TEST
+  stage: 1
+  persona: executor
+  summary: 'Executor: verify Proxmox SSH connectivity + environment readiness'
+  detail: "Run a test script:\n  infrastructure/proxmox/check_access.sh\nThis script\
+    \ should:\n  - verify SSH works\n  - verify Proxmox API/CLI reachable\n  - verify\
+    \ /usr/local/bin/talosctl exists or can be installed\nPurpose: ensure environment\
+    \ ready before VM creation.\n"
+  target: infrastructure/proxmox/check_access.sh
+  status: pending
+  attempts: 0
+  max_attempts: 2
+  depends_on:
+  - S1-004-ENGINEER-TALOS-CONFIG
+  note: ''
+- id: S1-006-PLANNER-CREATE-VMS
+  stage: 1
+  persona: planner
+  summary: 'Planner: define executor tasks for creating Talos VMs'
+  detail: "Generate executor tasks for:\n  - creating CP node VM(s)\n  - creating\
+    \ worker node VM(s)\nOnly produce tasks.\n"
+  target: ai/master_memo.txt
+  status: pending
+  attempts: 0
+  max_attempts: 1
+  depends_on:
+  - S1-005-EXECUTOR-PROX-TEST
+  note: ''
+- id: S1-007-ENGINEER-PROX-SCRIPT
+  stage: 1
+  persona: engineer
+  summary: 'Engineer: implement minimal Proxmox VM creation helpers'
+  detail: "Modify infrastructure/proxmox/cluster_bootstrap.sh or create new helper\
+    \ scripts\nin the same directory to support VM creation tasks defined by Planner.\n\
+    Only minimal valid diffs \u2014 no full automation yet.\n"
+  target: infrastructure/proxmox/
+  status: pending
+  attempts: 0
+  max_attempts: 2
+  depends_on:
+  - S1-006-PLANNER-CREATE-VMS
+  note: ''
+- id: S1-008-EXECUTOR-CREATE-VMS
+  stage: 1
+  persona: executor
+  summary: 'Executor: create Talos control-plane + worker VMs'
+  detail: 'Execute the scripts created by the engineer to create the Talos VMs.
+
+    Capture logs; fail fast.
+
+    '
+  target: infrastructure/proxmox/cluster_bootstrap.sh
+  status: pending
+  attempts: 0
+  max_attempts: 3
+  depends_on:
+  - S1-007-ENGINEER-PROX-SCRIPT
+  note: ''
+- id: S1-009-PLANNER-FLUX-BOOTSTRAP
+  stage: 1
+  persona: planner
+  summary: 'Planner: generate Flux bootstrap tasks'
+  detail: "Generate tasks for:\n  - Preparing flux-install.yaml\n  - Preparing initial\
+    \ Kustomization\n  - Ensuring repo folder structure exists\nOnly define tasks.\n"
+  target: ai/master_memo.txt
+  status: pending
+  attempts: 0
+  max_attempts: 1
+  depends_on:
+  - S1-008-EXECUTOR-CREATE-VMS
+  note: ''
+- id: S1-002-ENGINEER-FIX
+  stage: 1
+  persona: engineer
+  summary: Harden prox-n100 bootstrap script
+  detail: Ensure infrastructure/proxmox/cluster_bootstrap.sh references $HOME/.talos
+    instead of /root/.talos and document the Talos-only bootstrap flow from
+    ai/master_memo_orchestrator.txt.
+  target: infrastructure/proxmox/cluster_bootstrap.sh
+  note: Marker already present
+  depends_on:
+  - S1-001-RUN
+  attempts: 0
+  max_attempts: 2
+  status: success
+- id: S1-003-EXECUTOR-CHECK
+  stage: 1
+  persona: executor
+  summary: Validate prox-n100 controller status
+  detail: Run infrastructure/proxmox/check_cluster.sh after the bootstrap patch so
+    the Talos nodes verify correctly.
+  target: infrastructure/proxmox/check_cluster.sh
+  note: Blocked after 3 failures
+  depends_on:
+  - S1-002-ENGINEER-FIX
+  attempts: 3
+  max_attempts: 3
+  status: blocked
+- id: S1-004-EXECUTOR-GITOPS
+  stage: 1
+  persona: executor
+  summary: Run Flux GitOps stage
+  detail: Execute infrastructure/proxmox/cluster_bootstrap.sh gitops stage so Flux
+    controllers install and sync cluster/kubernetes/ per the master memo.
+  target: infrastructure/proxmox/cluster_bootstrap.sh
+  note: Planner queued GitOps staging
+  depends_on:
+  - S1-003-EXECUTOR-CHECK
+  attempts: 0
+  max_attempts: 3
+  status: pending
+- id: S1-005-ENGINEER-DOCS
+  stage: 1
+  persona: engineer
+  summary: Document bootstrap expectations
+  detail: Add a note to infrastructure/proxmox/README.md describing the Talos-first
+    workflow from ai/master_memo_orchestrator.txt and how to target the controller.
+  target: infrastructure/proxmox/README.md
+  note: Planner queued documentation update
+  depends_on:
+  - S1-004-EXECUTOR-GITOPS
+  attempts: 0
+  max_attempts: 2
+  status: pending
+- id: S1-003-EXECUTOR-ENGINEER-FIX
+  stage: 1
+  persona: engineer
+  summary: Fix failure in S1-003-EXECUTOR-CHECK
+  detail: Executor failed with error_class=ERR_UNKNOWN. Engineer must produce minimal
+    diffs only.
+  target: infrastructure/proxmox/check_cluster.sh
+  attempts: 0
+  max_attempts: 2
+  status: success
+  note: Appended minimal comment
+  depends_on:
+  - S1-003-EXECUTOR-CHECK

@@ -1,0 +1,9 @@
+issues:
+  - id: doc-architecture
+    status: open
+    summary: Outline the canonical Talos + Flux architecture for new contributors.
+    owner: planner
+  - id: logging-stack
+    status: blocked
+    summary: Wire Grafana Loki + Promtail into Flux-controlled logging subfolder.
+    owner: engineer

@@ -3,5 +3,5 @@ kind: Namespace
 metadata:
   name: flux-system
 ---
-# Flux controllers are installed by infrastructure/proxmox/cluster_bootstrap_helper.sh or flux CLI bootstrap.
+# Flux controllers are installed by infrastructure/proxmox/cluster_bootstrap.sh or flux CLI bootstrap.
 # This placeholder ensures the namespace exists for GitOps objects defined in gotk-sync.yaml.

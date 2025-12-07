@@ -1,0 +1,43 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: monitoring-prometheus
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: prometheus
+  targetNamespace: monitoring
+  chart:
+    spec:
+      chart: prometheus
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  suspend: false
+  values:
+    server:
+      persistentVolume:
+        enabled: true
+        size: 8Gi
+        storageClass: longhorn
+      alertmanagers:
+        - namespace: monitoring
+          name: monitoring-alertmanager
+          port: web
+      additionalScrapeConfigs:
+        - job_name: otel-collector
+          metrics_path: /metrics
+          static_configs:
+            - targets:
+                - monitoring-otel-collector.monitoring.svc.cluster.local:8888
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi

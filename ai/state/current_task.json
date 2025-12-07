@@ -1,7 +1,1 @@
-{
-  "task_id": "S1-001-RUN",
-  "persona": "executor",
-  "status": "waiting_retry",
-  "started_at": "1764784344.661129",
-  "note": "Run Stage 1 bootstrap for prox-n100; stop on first failure and log."
-}
+{"task_id": null, "persona": null, "status": "idle", "note": "", "updated_at": null}

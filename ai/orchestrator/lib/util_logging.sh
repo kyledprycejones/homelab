@@ -1,23 +1,69 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-append_last_run(){ echo "$1" >> "$LAST_RUN_FILE"; }
+: "${CURRENT_TASK_FILE:=ai/state/CURRENT_TASK_FILE}"
+: "${LAST_ERROR_FILE:=ai/state/last_error.json}"
+: "${STAGE0_LOG:=ai/logs/stage0.log}"
+
+log_stage0_event(){
+  local stage="$1"
+  local task_id="$2"
+  local persona="$3"
+  local result="$4"
+  local classification="$5"
+  local escalation="$6"
+  local note="${7:-}"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  mkdir -p "$(dirname "$STAGE0_LOG")"
+  note="${note//$'\n'/ }"
+  printf '[%s] stage=%s task=%s persona=%s result=%s classification=%s escalation=%s note=%s\n' \
+    "$ts" "$stage" "$task_id" "$persona" "$result" "${classification:-UNKNOWN}" "${escalation:-none}" "${note:-<none>}" >> "$STAGE0_LOG"
+}
+
+log_persona_event(){
+  local persona="$1"
+  local task_id="$2"
+  local status="$3"
+  local message="$4"
+  local log_dir="ai/logs/${persona}"
+  mkdir -p "$log_dir"
+  local log_file="${log_dir}/${task_id}.log"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  message="${message//$'\n'/ }"
+  printf '[%s] task=%s persona=%s status=%s message=%s\n' "$ts" "$task_id" "$persona" "$status" "${message:-<none>}" >> "$log_file"
+  echo "$log_file"
+}
 
 update_current_task(){
-  local tid="$1" persona="$2" status="$3" note="$4"
-  jq -n --arg t "$tid" --arg p "$persona" --arg s "$status" --arg n "$note" '{task_id:$t,persona:$p,status:$s,started_at:(now|tostring),note:$n}' > "$CURRENT_TASK_FILE"
+  local task_id="$1"
+  local persona="$2"
+  local status="$3"
+  local note="$4"
+  local extras="${5:-null}"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$extras" ] && [ "$extras" != "null" ]; then
+    jq -n --arg task_id "$task_id" --arg persona "$persona" --arg status "$status" --arg note "$note" --arg updated "$ts" --argjson extras "$extras" \
+      '{task_id:$task_id,persona:$persona,status:$status,note:$note,updated_at:$updated} + $extras' > "$CURRENT_TASK_FILE"
+  else
+    jq -n --arg task_id "$task_id" --arg persona "$persona" --arg status "$status" --arg note "$note" --arg updated "$ts" \
+      '{task_id:$task_id,persona:$persona,status:$status,note:$note,updated_at:$updated}' > "$CURRENT_TASK_FILE"
+  fi
 }
 
 record_last_error(){
-  local tid="$1" persona="$2" cmd="$3" stderr_tail="$4" classification="$5" count="$6" hash="$7"
-  jq -n --arg t "$tid" --arg p "$persona" --arg c "$cmd" --arg e "$stderr_tail" --arg cl "$classification" --arg h "$hash" --argjson fc "$count" '{task_id:$t,persona:$p,command:$c,stderr_tail:$e,error_hash:$h,failure_count:$fc,classification:$cl}' > "$LAST_ERROR_FILE"
-}
-
-log_task_event(){
-  local log_file="$1" tid="$2" persona="$3" target="$4" status="$5" failure_count="${6:-0}" note="${7:-}"
+  local task_id="$1"
+  local persona="$2"
+  local command="$3"
+  local log_path="$4"
+  local stderr_tail="$5"
+  local classification="$6"
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  target="${target:-<none>}"
-  note="${note//$'\n'/ }"
-  printf "[%s] TASK=%s persona=%s target=%s status=%s failure_count=%s note=%s\n" "$ts" "$tid" "$persona" "$target" "$status" "$failure_count" "${note:-<none>}" >> "$log_file"
+  mkdir -p "$(dirname "$LAST_ERROR_FILE")"
+  jq -n --arg task_id "$task_id" --arg persona "$persona" --arg command "$command" --arg log_path "$log_path" \
+    --arg stderr "$stderr_tail" --arg classification "$classification" --arg failed_at "$ts" \
+    '{task_id:$task_id,persona:$persona,command:$command,log_path:$log_path,stderr_tail:$stderr,error_classification:$classification,failed_at:$failed_at}' > "$LAST_ERROR_FILE"
 }

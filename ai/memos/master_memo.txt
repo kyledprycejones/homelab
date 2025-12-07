@@ -1,0 +1,360 @@
+Funoffshore Homelab — Stage 1 Target Architecture
+
+Repo root:
+/Users/kyle/Documents/repos/homelab
+
+This memo defines the canonical, production-style architecture for the Funoffshore Homelab Stage 1 environment.
+It describes what the homelab must become, not how an AI/agent should behave.
+
+You may only move the repository toward this architecture with small, incremental, architecture-consistent changes.
+
+1. Stage 1 Scope (Only Stage in Effect)
+
+Stage 1 includes all infrastructure, cluster, and application layers needed to operate a stable Talos-based Kubernetes platform on Proxmox with GitOps, storage, observability, ingress, and standard homelab apps.
+
+All work should converge toward this architecture.
+Do not reference or implement Stage 0, Stage 2, or any agent/orchestrator systems within this document.
+
+2. Canonical Physical & Hypervisor Architecture
+2.1 Hardware
+
+Primary compute: N100 Proxmox node(s)
+
+Networked storage: Synology NAS (NFS exports)
+
+2.2 Hypervisor
+
+Proxmox running on the N100
+
+VMs must follow this pattern:
+
+Talos control-plane nodes (VMs)
+
+Talos worker nodes (VMs)
+
+3. Talos Kubernetes Architecture
+
+Talos manifests live under:
+
+cluster/talos/
+  talconfig.yaml
+  controlplane.yaml
+  worker.yaml
+
+
+The Kubernetes cluster running atop Talos must:
+
+Be fully declarative
+
+Bootstrapped consistently across Proxmox VMs
+
+Emit machine configs and secrets into the above directory
+
+Integrate with Flux for GitOps-driven lifecycle
+
+4. GitOps Architecture & Repo Layout
+
+This is the canonical repository skeleton and must be preserved.
+
+cluster/
+  talos/
+    controlplane.yaml
+    worker.yaml
+    talconfig.yaml
+
+  kubernetes/
+    flux/
+      flux-install.yaml
+      gotk-*.yaml
+      apps.yaml
+      kustomization.yaml
+
+    platform/
+      ingress/
+        cloudflared/
+        ingress-nginx/
+      dns/
+        external-dns/
+      certs/
+      storage/
+        longhorn/
+        nfs-subdir/
+      logging/
+        loki/
+        promtail/
+      monitoring/
+        prometheus/
+        grafana/
+        metrics-server/
+        alertmanager/
+      security/
+      # Observability/OTel collector may live here
+
+    apps/
+      media/
+        jellyfin/
+        jellyseer/
+        radarr/
+        sonarr/
+        prowlarr/
+        qbittorrent/
+        bazarr/
+      tools/
+        ai-studio/      # placeholder; no Stage 2 logic required
+        portainer/
+        syncthing/
+        tailscale/
+        vscode-server/
+      games/
+        minecraft/
+      demos/
+
+config/
+  clusters/
+    prox-n100.yaml
+  env/
+    prox-n100.env     # human-managed, not machine-edited
+
+infrastructure/
+  proxmox/
+    cluster_bootstrap.sh
+  synology/
+    setup.sh
+
+docs/
+  architecture.md
+  stage1_talos_overview.md
+  bootstrap-stages.md
+
+ai/
+  # May contain helper scripts or logs, but AI logic is not part of Stage 1.
+
+
+No new top-level directories should be introduced for Stage 1 components.
+Modifications should maintain or deepen this structure, not replace it.
+
+5. Storage Architecture (Canonical)
+
+Stage 1 uses two storage layers, each with clear responsibility:
+
+5.1 Longhorn — Block Storage
+
+Deployed under: cluster/kubernetes/platform/storage/longhorn/
+
+Used for:
+
+Stateful workloads needing RWO/RWX
+
+Databases
+
+Applications where block-level semantics are required
+
+Longhorn must remain the only block-storage engine in Stage 1.
+
+5.2 NFS Subdir Provisioner — Bulk Storage
+
+Lives under: cluster/kubernetes/platform/storage/nfs-subdir/
+
+Backed by Synology NFS exports
+
+Used for:
+
+Media libraries (Jellyfin, qBittorrent, Radarr…)
+
+Backup directories
+
+Large unstructured or archival data
+
+No Ceph/Rook/ZFS-CSI/etc. may replace this dual-storage model.
+
+6. Observability & Telemetry Architecture
+
+The homelab must converge toward a complete metrics + logs + traces observability stack.
+
+6.1 Metrics
+
+Located under: cluster/kubernetes/platform/monitoring/
+
+Prometheus
+
+Alertmanager
+
+metrics-server
+
+6.2 Logs
+
+Located under: cluster/kubernetes/platform/logging/
+
+Loki
+
+Promtail DaemonSet
+
+6.3 Traces & OTel
+
+A canonical OTel Collector must be deployed under either:
+
+cluster/kubernetes/platform/observability/otel-collector/
+
+
+or
+
+cluster/kubernetes/platform/monitoring/otel-collector/
+
+
+The OTel Collector must:
+
+Receive OTLP over gRPC and HTTP
+
+Accept telemetry from:
+
+instrumented apps
+
+host agents (optional)
+
+Prometheus remote_write or similar mechanisms
+
+Export to:
+
+Traces backend (Tempo/Jaeger)
+
+Loki (logs)
+
+Prometheus or remote OTLP metrics sinks
+
+You may introduce a traces backend (Tempo/Jaeger), but must not replace Prometheus/Loki/Grafana.
+
+6.4 Grafana
+
+Grafana must integrate with:
+
+Prometheus (metrics)
+
+Loki (logs)
+
+The chosen traces backend
+
+Dashboards must include:
+
+Kubernetes cluster health
+
+Node metrics
+
+Talos signals
+
+Proxmox/Synology telemetry (eventually)
+
+7. Networking, Ingress, Zero-Trust Access
+
+The canonical networking stack includes:
+
+7.1 Ingress
+cluster/kubernetes/platform/ingress/ingress-nginx/
+
+7.2 Secure Remote Access
+
+Cloudflare Tunnel (cloudflared)
+cluster/kubernetes/platform/ingress/cloudflared/
+
+External DNS (Cloudflare provider)
+cluster/kubernetes/platform/dns/external-dns/
+
+Tailscale
+cluster/kubernetes/apps/tools/tailscale/
+
+No NodePorts should be exposed publicly.
+
+8. Application Layer
+
+Applications must follow this layout:
+
+8.1 Media Stack
+
+Under cluster/kubernetes/apps/media/
+
+Jellyfin
+
+Jellyseer
+
+Radarr, Sonarr, Prowlarr
+
+qBittorrent
+
+Bazarr
+
+Use:
+
+NFS for large libraries
+
+Longhorn only for stateful metadata if needed
+
+8.2 Tools
+
+Under cluster/kubernetes/apps/tools/
+
+Portainer
+
+Syncthing
+
+Tailscale
+
+VSCode Server
+
+AI Studio placeholder (no Stage 2 logic)
+
+8.3 Games
+
+Under cluster/kubernetes/apps/games/minecraft/
+
+8.4 Demos
+
+Small apps placed under cluster/kubernetes/apps/demos/
+
+Changes to apps should use:
+
+Kustomize overlays
+
+Small HelmRelease values files
+
+Existing storage/ingress/observability pieces
+Not custom reinvented platforms.
+
+9. Synology Integration
+
+Synology is responsible for:
+
+Exporting NFS mounts used by NFS subdir provisioner
+
+Providing bulk storage for large media and archives
+
+Acting as an optional backup target for Longhorn snapshots/backups
+
+Scripts related to Synology live under:
+
+infrastructure/synology/setup.sh
+
+10. Proxmox Integration
+
+Proxmox-related automation and bootstrap scripts live under:
+
+infrastructure/proxmox/
+  cluster_bootstrap.sh
+
+
+The bootstrap process should:
+
+Create/verify Talos control plane + worker VMs
+
+Apply correct cloud-init or machine configuration injection
+
+Coordinate Talos machine configuration files under cluster/talos/
+
+Prepare the environment for Flux to take over cluster lifecycle management
+
+11. The Immutable Vision
+
+This architecture represents the final, canonical direction of the Funoffshore Homelab Stage 1.
+
+The architecture must not be replaced or re-imagined.
+Only incremental convergence toward this design is allowed.
+
+This memo contains no operational directives—only the target form the repo must evolve toward.

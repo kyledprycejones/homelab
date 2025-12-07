@@ -21,7 +21,7 @@ spec:
   upgrade:
     remediation:
       retries: 3
-  suspend: true
+  suspend: false
   valuesFrom:
     - kind: ConfigMap
       name: longhorn-values

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ========= EDIT IF NEEDED =========
 NFS_STORAGE_ID="synology-nfs"
-ISO_FILE="ubuntu-24.04.3-live-server-amd64.iso"   # only removed if REMOVE_ISO=true
+ISO_FILE="talos-amd64.iso"   # only removed if REMOVE_ISO=true (used by infrastructure/proxmox/vms.sh)
 TEMPLATE_VMID=9000
 CLONE_BASE_VMID=101
 CLONE_COUNT=3
@@ -11,7 +11,7 @@ CLOUD_IMG_LOCAL="/root/noble-server-cloudimg-amd64.img"
 
 # Danger toggles (set true/false)
 REMOVE_ISO="false"           # also delete ISO from /mnt/pve/<storage>/template/iso/
-REMOVE_SNIPPETS="true"       # remove k3s/argocd user-data snippet(s)
+REMOVE_SNIPPETS="true"       # remove legacy GitOps user-data snippet(s)
 REMOVE_LOCAL_CLOUD_IMG="false" # delete local /root/...cloudimg-amd64.img
 
 # ========= DO NOT EDIT BELOW =========
@@ -44,8 +44,9 @@ main(){
   find "/mnt/pve/${NFS_STORAGE_ID}/images/${TEMPLATE_VMID}/" -maxdepth 1 -name "vm-${TEMPLATE_VMID}-cloudinit.qcow2" -print -exec rm -f {} \; 2>/dev/null || true
 
   if [[ "${REMOVE_SNIPPETS}" == "true" ]]; then
-    echo "== Removing snippets =="
-    rm -f "/mnt/pve/${NFS_STORAGE_ID}/snippets/k3s-argo-userdata.yaml" 2>/dev/null || true
+    echo "== Removing legacy GitOps snippets =="
+    rm -f "/mnt/pve/${NFS_STORAGE_ID}/snippets/"*gitops-userdata.yaml 2>/dev/null || true
+    rm -f "/mnt/pve/${NFS_STORAGE_ID}/snippets/legacy-gitops.yaml" 2>/dev/null || true
     # remove any per-VM hostname/userdata snippets you might have added:
     rm -f /mnt/pve/${NFS_STORAGE_ID}/snippets/ci-chatgpt-build*.yaml 2>/dev/null || true
   fi

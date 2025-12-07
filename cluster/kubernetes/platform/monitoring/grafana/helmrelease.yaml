@@ -1,0 +1,53 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: monitoring-grafana
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: grafana
+  targetNamespace: monitoring
+  chart:
+    spec:
+      chart: grafana
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-monitoring
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  suspend: false
+  values:
+    persistence:
+      enabled: true
+      storageClassName: longhorn
+      size: 5Gi
+    adminPassword: homelab-grafana
+    service:
+      type: ClusterIP
+    grafana.ini:
+      server:
+        root_url: http://grafana.funoffshore.com
+        serve_from_sub_path: false
+    datasources:
+      datasources.yaml:
+        apiVersion: 1
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            url: http://monitoring-prometheus.monitoring.svc.cluster.local:9090
+            access: proxy
+            isDefault: true
+          - name: Loki
+            type: loki
+            url: http://logging-loki.logging.svc.cluster.local:3100
+            access: proxy
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        searchNamespace: monitoring

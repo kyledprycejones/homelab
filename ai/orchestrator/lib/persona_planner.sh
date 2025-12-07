@@ -1,124 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-persona_planner_handle(){
-  local tid="$1" type="$2" target="$3" desc="$4" ts="$5" log_file="$6" stage="${7:-0}"
-  local stage_num="${stage//[!0-9]/}"
-  stage_num="${stage_num:-0}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cd "$REPO_ROOT"
 
-  planner_log_event(){
-    local status="$1" note="$2"
-    log_task_event "$log_file" "$tid" "planner" "${target:-<none>}" "$status" "0" "$note"
-  }
+. ai/orchestrator/lib/util_yaml.sh
+. ai/orchestrator/lib/util_logging.sh
 
-  planner_block_failure(){
-    local reason="$1"
-    local note="planner failure; human review required: ${reason}"
-    set_task_status "$tid" "blocked" "$note"
-    planner_log_event "blocked" "$note"
-    append_last_run "[$ts] ${tid} blocked (${reason})"
-    update_current_task "$tid" "planner" "blocked" "$desc"
-    return 1
-  }
-
-  # Validate task is in a valid starting state
-  local current_status
-  current_status="$(get_task_status "$tid" 2>/dev/null || echo "")"
-  if [ -z "$current_status" ]; then
-    planner_log_event "failed" "task not found in backlog"
-    update_current_task "$tid" "planner" "failed" "$desc"
-    append_last_run "[$ts] ${tid} failed (task not found)"
-    return 1
-  fi
-  if [ "$current_status" != "pending" ] && [ "$current_status" != "waiting_retry" ]; then
-    planner_log_event "failed" "task in invalid state: $current_status"
-    update_current_task "$tid" "planner" "failed" "$desc"
-    append_last_run "[$ts] ${tid} failed (invalid state: $current_status)"
-    return 1
-  fi
-
-  planner_log_event "running" "consulted README + ai/inspiration for context"
-  set +e
-  set_task_status "$tid" "running" "planner running"
-  local transition_rc=$?
-  set -e
-  if [ "$transition_rc" -ne 0 ]; then
-    planner_log_event "failed" "failed to transition to running (rc=$transition_rc)"
-    update_current_task "$tid" "planner" "failed" "$desc"
-    append_last_run "[$ts] ${tid} failed (state transition error)"
-    return 1
-  fi
-  update_current_task "$tid" "planner" "running" "$desc"
-
-  if [ ! -s "$target" ]; then
-    planner_block_failure "missing patch"
-    return 1
-  fi
-
-  local mission inspiration
-  mission="$(cat README.md 2>/dev/null || true)"
-  inspiration="$(cat ai/vision/inspiration.md 2>/dev/null || true)"
-  if ! printf '%s' "$mission" | grep -qi "Stage 0" >/dev/null 2>&1; then
-    planner_block_failure "missing Stage 0 focus in README"
-    return 1
-  fi
-  # Ensure patch sticks within allowed planner scope
-  planner_allowed(){
-    local path="$1"
-    case "$path" in
-      ai/backlog.yaml|ai/mission.md|ai/inspiration.md|ai/state/*) return 0 ;;
-      *) return 1 ;;
-    esac
-  }
-
-  local patch_lines
-  patch_lines=$(wc -l < "$target" | tr -d ' ')
-  if [ "$patch_lines" -gt 400 ]; then
-    planner_block_failure "planner patch too large ($patch_lines lines)"
-    return 1
-  fi
-
-  local touched_ok=0
-  while read -r line; do
-    [[ "$line" =~ ^\*\*\*\ (Update|Delete|Add)\ File:\  ]] && file="${line#*** Update File: }" && file="${file#*** Delete File: }" && file="${file#*** Add File: }"
-    [[ -z "${file:-}" ]] && continue
-    if ! planner_allowed "$file"; then
-      planner_block_failure "planner touched forbidden path $file"
-      return 1
-    fi
-    if [[ "$file" == ai/backlog.yaml ]]; then
-      local stage_line
-      stage_line="$(printf '%s\n' "$line" | sed -n 's/.*stage:[[:space:]]*\\([0-9]\\+\\).*/\\1/p')"
-      if [ -n "$stage_line" ] && [ "$stage_line" -ne "$stage_num" ]; then
-        planner_block_failure "patch stage $stage_line conflicts with orchestrator stage $stage_num"
-        return 1
-      fi
-    fi
-    if [[ "$line" =~ stage:[[:space:]]*([0-9]+) ]]; then
-      local stage_line="${BASH_REMATCH[1]}"
-      if [ "$stage_line" -ne "$stage_num" ]; then
-        planner_block_failure "patch stage $stage_line conflicts with orchestrator stage $stage_num"
-        return 1
-      fi
-    fi
-    touched_ok=1
-  done < "$target"
-
-  if [ "$touched_ok" -eq 0 ]; then
-    planner_block_failure "planner patch touched no allowed files"
-    return 1
-  fi
-
-  if [ "${#inspiration}" -eq 0 ]; then
-    planner_block_failure "ai/inspiration.md is empty"
-    return 1
-  fi
-
-  planner_log_event "completed" "approved patch; syncing backlog with README + ai/inspiration"
-  set +e
-  set_task_status "$tid" "completed" "approved by planner"
-  set -e
-  append_apply_task "$tid" "$target" "$stage"
-  append_last_run "[$ts] ${tid} approved"
-  update_current_task "$tid" "planner" "completed" "$desc"
+planner_stage_tasks(){
+  cat <<'EOF'
+[{
+  "id": "S1-002-ENGINEER-FIX",
+  "stage": 1,
+  "persona": "engineer",
+  "summary": "Harden prox-n100 bootstrap script",
+  "detail": "Ensure infrastructure/proxmox/cluster_bootstrap.sh references $HOME/.talos instead of /root/.talos and document the Talos-only bootstrap flow described in ai/master_memo_orchestrator.txt.",
+  "target": "infrastructure/proxmox/cluster_bootstrap.sh",
+  "note": "Planner queued engineer patch",
+  "depends_on": ["S1-001-RUN"],
+  "attempts": 0,
+  "max_attempts": 2,
+  "status": "pending"
+},
+{
+  "id": "S1-003-EXECUTOR-CHECK",
+  "stage": 1,
+  "persona": "executor",
+  "summary": "Validate prox-n100 controller status",
+  "detail": "Run infrastructure/proxmox/check_cluster.sh after the bootstrap patch so the Talos nodes verify correctly.",
+  "target": "infrastructure/proxmox/check_cluster.sh",
+  "note": "Planner queued executor validation",
+  "depends_on": ["S1-002-ENGINEER-FIX"],
+  "attempts": 0,
+  "max_attempts": 3,
+  "status": "pending"
+},
+{
+  "id": "S1-004-EXECUTOR-GITOPS",
+  "stage": 1,
+  "persona": "executor",
+  "summary": "Run Flux GitOps stage",
+  "detail": "Execute infrastructure/proxmox/cluster_bootstrap.sh gitops stage so Flux controllers install and sync cluster/kubernetes/ per the master memo.",
+  "target": "infrastructure/proxmox/cluster_bootstrap.sh",
+  "note": "Planner queued GitOps staging",
+  "depends_on": ["S1-003-EXECUTOR-CHECK"],
+  "attempts": 0,
+  "max_attempts": 3,
+  "status": "pending"
+},
+{
+  "id": "S1-005-ENGINEER-DOCS",
+  "stage": 1,
+  "persona": "engineer",
+  "summary": "Document bootstrap expectations",
+  "detail": "Add a note to infrastructure/proxmox/README.md describing the Talos-first workflow from ai/master_memo_orchestrator.txt and how to target the controller.",
+  "target": "infrastructure/proxmox/README.md",
+  "note": "Planner queued documentation update",
+  "depends_on": ["S1-004-EXECUTOR-GITOPS"],
+  "attempts": 0,
+  "max_attempts": 2,
+  "status": "pending"
+}]
+EOF
 }
+
+append_stage_tasks(){
+  local appended=0
+  while read -r payload; do
+    local task_id
+    task_id="$(echo "$payload" | jq -r '.id')"
+    if yaml_task_exists "$task_id"; then
+      continue
+    fi
+    yaml_append_task "$payload"
+    appended=1
+  done < <(planner_stage_tasks | jq -c '.[]')
+  echo "$appended"
+}
+
+main(){
+  if [ "$#" -lt 1 ]; then
+    echo "Usage: persona_planner.sh TASK_ID" >&2
+    exit 1
+  fi
+  local task_id="$1"
+  local task_json
+  task_json="$(yaml_get_task "$task_id")" || { echo "Planner task $task_id missing" >&2; exit 1; }
+  local summary detail stage_num
+  summary="$(echo "$task_json" | jq -r '.summary // "planner task"')"
+  detail="$(echo "$task_json" | jq -r '.detail // ""')"
+  stage_num="$(echo "$task_json" | jq -r '.stage // 1')"
+
+  log_persona_event "planner" "$task_id" "running" "$summary: $detail" >/dev/null
+  yaml_update_task "$task_id" '{"status":"running"}'
+  update_current_task "$task_id" "planner" "running" "$summary" "{\"stage\":$stage_num}"
+
+  local appended
+  appended="$(append_stage_tasks)"
+
+  if [ "$appended" -eq 1 ]; then
+    yaml_update_task "$task_id" '{"status":"success","note":"Planner added stage work"}'
+    update_current_task "$task_id" "planner" "success" "$summary"
+    log_persona_event "planner" "$task_id" "success" "planner generated stage ${stage_num} work"
+    exit 0
+  fi
+
+  yaml_update_task "$task_id" '{"status":"success","note":"No additional work needed at this time"}'
+  update_current_task "$task_id" "planner" "success" "$summary"
+  log_persona_event "planner" "$task_id" "success" "planner had nothing new to add"
+}
+
+main "$@"

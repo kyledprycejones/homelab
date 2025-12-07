@@ -1,146 +1,91 @@
 #!/usr/bin/env python3
-"""
-Auto-sync Stage 1 backlog tasks inside ai/backlog.yaml.
-
-Goal: keep Stage 1 focused on the bootstrap run + escalations, and park everything else.
-"""
 from __future__ import annotations
 
-import yaml
+import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BACKLOG_PATH = REPO_ROOT / "ai" / "backlog.yaml"
 
+BASE_ENTRY = {
+    "id": "S1-001-RUN",
+    "stage": 1,
+    "persona": "executor",
+    "summary": "Run Stage 1 bootstrap for prox-n100",
+    "detail": "Execute infrastructure/proxmox/cluster_bootstrap.sh against the prox-n100 controller, capture logs, and stop on failure.",
+    "target": "infrastructure/proxmox/cluster_bootstrap.sh",
+    "status": "pending",
+    "attempts": 0,
+    "max_attempts": 1,
+    "depends_on": [],
+    "note": "executor pending",
+}
 
-def load_backlog() -> List[dict]:
+
+def yaml_safe_load() -> list[dict[str, Any]]:
+    import yaml
+
     if not BACKLOG_PATH.exists():
         return []
-    try:
-        return yaml.safe_load(BACKLOG_PATH.read_text()) or []
-    except Exception:
+    data = yaml.safe_load(BACKLOG_PATH.read_text() or "[]") or []
+    if not isinstance(data, list):
         return []
+    return data
 
 
-def write_backlog(entries: List[dict]) -> None:
-    BACKLOG_PATH.write_text(yaml.safe_dump(entries, sort_keys=False))
+def yaml_safe_dump(entries: list[dict[str, Any]]) -> None:
+    import yaml
+
+    tmp_path = BACKLOG_PATH.with_suffix(".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(entries, f, sort_keys=False)
+    os.replace(tmp_path, BACKLOG_PATH)
 
 
-def find_entry(entries: List[dict], task_id: str) -> Optional[dict]:
+def normalize(entry: dict[str, Any]) -> None:
+    entry.setdefault("note", "")
+    entry.setdefault("detail", "")
+    entry.setdefault("target", "")
+    entry.setdefault("attempts", 0)
+    entry.setdefault("max_attempts", 3)
+    entry.setdefault("depends_on", [])
+    if entry.setdefault("status", "pending") not in {
+        "pending",
+        "running",
+        "success",
+        "failed",
+        "blocked",
+        "waiting_retry",
+    }:
+        entry["status"] = "pending"
+
+
+def ensure_entry(entries: list[dict[str, Any]], payload: dict[str, Any]) -> bool:
     for entry in entries:
-        if entry.get("task_id") == task_id:
-            return entry
-    return None
+        if entry.get("id") == payload.get("id"):
+            return False
+    entry = {**payload}
+    normalize(entry)
+    entries.append(entry)
+    return True
 
 
-def upsert(entries: List[dict], payload: dict, preserve_status: bool = True) -> bool:
-    existing = find_entry(entries, payload["task_id"])
-    if existing is None:
-        entries.append(payload)
-        return True
-
-    before = yaml.safe_dump(existing, sort_keys=True)
-    status = existing.get("status") if preserve_status else payload.get("status", "pending")
-    existing.update(payload)
-    if preserve_status and status:
-        existing["status"] = status
-    changed = yaml.safe_dump(existing, sort_keys=True) != before
-    return changed
+def sync() -> None:
+    backlog = yaml_safe_load()
+    changed = False
+    for entry in backlog:
+        normalize(entry)
+    if ensure_entry(backlog, BASE_ENTRY):
+        changed = True
+    if changed:
+        backlog.sort(key=lambda e: (int(e.get("stage", 0)), str(e.get("id", ""))))
+        yaml_safe_dump(backlog)
+        print("SYNC: changed; ensured stage 1 bootstrap task")
 
 
 def main() -> None:
-    backlog = load_backlog()
-    changed = False
-    actions: list[str] = []
-
-    active = {
-        "task_id": "S1-001-RUN",
-        "type": "run",
-        "persona": "executor",
-        "target": "infrastructure/proxmox/cluster_bootstrap.sh",
-        "description": "Run Stage 1 bootstrap for prox-n100; stop on first failure and log.",
-        "status": "pending",
-        "metadata": {"stage": 1, "cluster": "prox-n100"},
-        "note": "executor pending",
-      }
-    parked = [
-        {
-            "task_id": "S1-authentik",
-            "type": "run",
-            "persona": "executor",
-            "target": "",
-            "description": "Authentik ingress and SSO wiring",
-            "status": "blocked",
-            "metadata": {"stage": 2},
-            "note": "parked until bootstrap is stable",
-        },
-        {
-            "task_id": "S1-cloudflared",
-            "type": "run",
-            "persona": "executor",
-            "target": "",
-            "description": "Cloudflared tunnel manifests (ConfigMap/Deployment kustomization)",
-            "status": "blocked",
-            "metadata": {"stage": 2},
-            "note": "parked until bootstrap is stable",
-        },
-        {
-            "task_id": "S1-ingress",
-            "type": "run",
-            "persona": "executor",
-            "target": "",
-            "description": "Ingress / Traefik wiring for sample apps",
-            "status": "blocked",
-            "metadata": {"stage": 2},
-            "note": "parked until bootstrap is stable",
-        },
-        {
-            "task_id": "S1-logging",
-            "type": "run",
-            "persona": "executor",
-            "target": "",
-            "description": "Observability/logging stability for CLI loops",
-            "status": "blocked",
-            "metadata": {"stage": 2},
-            "note": "parked until bootstrap is stable",
-        },
-        {
-            "task_id": "S1-media-apps",
-            "type": "run",
-            "persona": "executor",
-            "target": "",
-            "description": "Sample media apps (Arrs, Jellyfin, qBittorrent, etc.) manifests",
-            "status": "blocked",
-            "metadata": {"stage": 2},
-            "note": "parked until bootstrap is stable",
-        },
-        {
-            "task_id": "S1-monitoring",
-            "type": "run",
-            "persona": "executor",
-            "target": "",
-            "description": "Monitoring stack (Prometheus / Grafana / Loki) scaffolding",
-            "status": "blocked",
-            "metadata": {"stage": 2},
-            "note": "parked until bootstrap is stable",
-        },
-    ]
-
-    if upsert(backlog, active, preserve_status=True):
-        changed = True
-        actions.append("upserted S1-001-RUN")
-
-    for payload in parked:
-        if upsert(backlog, payload, preserve_status=False):
-            changed = True
-            actions.append(f"parked {payload['task_id']}")
-
-    if changed:
-        backlog.sort(key=lambda e: (int(e.get("metadata", {}).get("stage", 1)), e.get("task_id", "")))
-        write_backlog(backlog)
-        summary = "; ".join(actions) or "updated backlog"
-        print(f"SYNC: changed; {summary}")
+    sync()
 
 
 if __name__ == "__main__":
