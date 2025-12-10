@@ -2,18 +2,19 @@ Funoffshore Homelab – Orchestrator v2 Architecture
 
 Overview
 
-The Funoffshore Homelab Orchestrator v2 is a structured, multi‑layer automation framework designed to manage, repair, and evolve a Talos‑based Kubernetes platform running on Proxmox. This system is intentionally architected to resemble a production‑grade operations pipeline: deterministic, auditable, minimally autonomous, and always aligned with an explicit human‑authored architecture specification.
+The Funoffshore Homelab Orchestrator v2 is a deliberately engineered, multi‑layer control system designed to operate, repair, and continuously converge a Talos‑based Kubernetes environment running atop Proxmox. It draws on concepts from real-world SRE, platform engineering, and automated remediation systems (e.g., CI/CD pipelines, operator/controller patterns), but applies them in a tightly bounded, highly observable manner suited for a single‑operator homelab.
 
-Its purpose is not to create an agent that “figures things out,” but a supervised automation system that behaves like a disciplined junior platform engineer paired with a reliable execution harness and an expert escalation tier. Every decision, change, and fix is governed by the constraints and invariants defined in the repository itself—most importantly `ai/master_memo.md`.
+Unlike autonomous “agents,” this orchestrator is explicitly **supervised**. Each layer has clear responsibilities, strict guardrails, and auditable behavior. The system behaves like a junior engineer performing careful, incremental work under the guidance of a well‑defined architecture and escalation workflow. Complex or ambiguous failures are escalated to a senior tier (OpenAI API) with rigorous context, diagnostic tooling, and call‑budget constraints.
 
-This document is written for systems engineers, SREs, or platform architects who need a clear understanding of:
+This document is written for systems engineers, SREs, and platform architects. It emphasizes:
 
-- The roles and boundaries of each component (Plumbing, Executor, API, Human).
-- How failures are detected, classified, escalated, and resolved.
-- How architectural integrity is maintained through guardrails.
-- How the orchestrator progresses Stage 1 toward a stable, production‑like cluster.
+- Clear separation of concerns across Plumbing, Executor, API, and Human layers.
+- Deterministic handling of failures and error classification.
+- Strong architectural invariants enforcing stability, safety, and predictability.
+- An operational flow that mirrors production‑grade automated remediation systems.
+- Reversibility, traceability, and human oversight as primary design goals.
 
-The Orchestrator v2 is intentionally opinionated: simplicity, traceability, and safety are prioritized over full autonomy. This mirrors real‑world operational patterns where correctness, reversibility, and observability dominate system design considerations.
+Orchestrator v2 assumes that correctness and safety outweigh autonomy. It values small, reversible steps; comprehensive logging; structured reasoning; and a narrow, well‑defined scope (Stage 1 only). The orchestrator does not “invent” new architecture—it methodically drives the existing repository toward the canonical form defined in `ai/master_memo.md`, ensuring long-term maintainability and clarity.
 
 Purpose
 

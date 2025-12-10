@@ -1,0 +1,8 @@
+{
+  "vms": "idle",
+  "talos": "idle",
+  "infra": "idle",
+  "apps": "idle",
+  "ingress": "idle",
+  "obs": "idle"
+}

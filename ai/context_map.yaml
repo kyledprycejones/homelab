@@ -1,0 +1,195 @@
+# Orchestrator v2 - Context Map
+#
+# This file maps stages to their relevant files and architecture sections.
+# The Executor uses this to curate context for escalations.
+#
+# This file is treated as plumbing and should only be edited manually.
+
+# Stage definitions
+stages:
+  vms:
+    description: "Proxmox VM creation/configuration for Talos nodes"
+    command: "infrastructure/proxmox/vms.sh"
+    files:
+      - infrastructure/proxmox/vms.sh
+      - config/clusters/prox-n100.yaml
+      - config/env/prox-n100.env
+    architecture_sections:
+      - proxmox
+      - talos
+    success_criteria:
+      - "Talos VMs created and running"
+      - "VMs have correct resource allocation"
+      - "VMs can network via bridge"
+
+  talos:
+    description: "Talos Kubernetes bootstrap (control plane + workers)"
+    command: "infrastructure/proxmox/cluster_bootstrap.sh talos"
+    files:
+      - infrastructure/proxmox/vms.sh
+      - infrastructure/proxmox/cluster_bootstrap.sh
+      - cluster/talos/controlplane.yaml
+      - cluster/talos/worker.yaml
+      - cluster/talos/talconfig.yaml
+      - config/clusters/prox-n100.yaml
+    architecture_sections:
+      - talos
+      - proxmox
+      - kubernetes
+    success_criteria:
+      - "Talos VMs successfully created"
+      - "Nodes boot and expose Talos API"
+      - "talosctl get machines returns correct state"
+      - "Kubernetes API is accessible"
+    diagnostics:
+      - "talosctl --nodes ${CTRL_IP} version"
+      - "talosctl --nodes ${CTRL_IP} get machines"
+      - "talosctl --nodes ${CTRL_IP} health"
+      - "talosctl --nodes ${CTRL_IP} dmesg | tail -100"
+      - "kubectl get nodes -o wide"
+
+  infra:
+    description: "Core platform infrastructure (Flux, Longhorn, NFS)"
+    command: "infrastructure/proxmox/cluster_bootstrap.sh infra"
+    files:
+      - infrastructure/proxmox/cluster_bootstrap.sh
+      - cluster/kubernetes/flux/flux-install.yaml
+      - cluster/kubernetes/flux/gotk-sync.yaml
+      - cluster/kubernetes/flux/gotk-components.yaml
+      - cluster/kubernetes/platform/storage/longhorn/helmrelease.yaml
+      - cluster/kubernetes/platform/storage/nfs-subdir/helmrelease.yaml
+      - cluster/kubernetes/platform/kustomization.yaml
+    architecture_sections:
+      - flux
+      - storage
+      - kubernetes
+    success_criteria:
+      - "Flux controllers running in flux-system"
+      - "Longhorn StorageClass available"
+      - "NFS StorageClass available"
+      - "Platform kustomizations reconciled"
+    diagnostics:
+      - "kubectl get pods -n flux-system"
+      - "kubectl get kustomizations -A"
+      - "kubectl get gitrepositories -A"
+      - "kubectl get sc"
+      - "kubectl get pods -n longhorn-system"
+
+  apps:
+    description: "Homelab applications (media, tools, games, demos)"
+    command: "infrastructure/proxmox/cluster_bootstrap.sh apps"
+    files:
+      - infrastructure/proxmox/cluster_bootstrap.sh
+      - cluster/kubernetes/flux/apps.yaml
+      - cluster/kubernetes/apps/
+    architecture_sections:
+      - apps
+      - flux
+    success_criteria:
+      - "Apps kustomization reconciled"
+      - "Core apps running"
+    diagnostics:
+      - "kubectl get kustomizations -A"
+      - "kubectl get pods -A | grep -v kube-system | grep -v flux-system"
+      - "kubectl get pvc -A"
+
+  ingress:
+    description: "Ingress, Cloudflare tunnel, external-dns"
+    command: "infrastructure/proxmox/cluster_bootstrap.sh apps"
+    files:
+      - cluster/kubernetes/platform/ingress/ingress-nginx/helmrelease.yaml
+      - cluster/kubernetes/platform/ingress/cloudflared/deployment.yaml
+      - cluster/kubernetes/platform/ingress/kustomization.yaml
+    architecture_sections:
+      - ingress
+      - cloudflare
+      - dns
+    success_criteria:
+      - "ingress-nginx controller running"
+      - "cloudflared tunnel connected"
+      - "external-dns syncing records"
+    diagnostics:
+      - "kubectl get pods -n ingress-nginx"
+      - "kubectl get pods -n cloudflared"
+      - "kubectl get ingress -A"
+      - "kubectl logs -n cloudflared deploy/cloudflared --tail=50"
+
+  obs:
+    description: "Observability stack (Prometheus, Loki, Grafana, OTel)"
+    command: "infrastructure/proxmox/cluster_bootstrap.sh apps"
+    files:
+      - cluster/kubernetes/platform/monitoring/grafana/helmrelease.yaml
+      - cluster/kubernetes/platform/monitoring/metrics-server/helmrelease.yaml
+      - cluster/kubernetes/platform/monitoring/alertmanager/helmrelease.yaml
+      - cluster/kubernetes/platform/monitoring/kustomization.yaml
+    architecture_sections:
+      - monitoring
+      - observability
+    success_criteria:
+      - "Prometheus scraping metrics"
+      - "Grafana accessible"
+      - "Loki collecting logs"
+    diagnostics:
+      - "kubectl get pods -n monitoring"
+      - "kubectl get servicemonitors -A"
+      - "kubectl logs -n monitoring deploy/grafana --tail=50"
+
+# Protected files - AI must not modify these
+protected_files:
+  - ai/master_memo.md
+  - ai/context_map.yaml
+  - ai/bootstrap_loop.sh
+  - ai/state/errors.json
+  - ai/state/stage_status.json
+  - infrastructure/proxmox/wipe_proxmox.sh
+
+# Architecture sections referenced in stage mappings
+# These map to sections in ai/master_memo.md
+architecture_section_keywords:
+  proxmox:
+    - "Proxmox"
+    - "VM"
+    - "virtualization"
+  talos:
+    - "Talos"
+    - "Kubernetes"
+    - "control plane"
+    - "worker"
+  kubernetes:
+    - "Kubernetes"
+    - "kubectl"
+    - "kubeconfig"
+  flux:
+    - "Flux"
+    - "GitOps"
+    - "Kustomization"
+    - "HelmRelease"
+  storage:
+    - "Longhorn"
+    - "NFS"
+    - "StorageClass"
+    - "PVC"
+  ingress:
+    - "ingress-nginx"
+    - "Ingress"
+    - "LoadBalancer"
+  cloudflare:
+    - "Cloudflare"
+    - "tunnel"
+    - "cloudflared"
+  dns:
+    - "external-dns"
+    - "DNS"
+  apps:
+    - "applications"
+    - "media"
+    - "tools"
+  monitoring:
+    - "Prometheus"
+    - "Grafana"
+    - "metrics"
+  observability:
+    - "Loki"
+    - "logging"
+    - "OpenTelemetry"
+    - "traces"

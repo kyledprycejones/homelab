@@ -1,14 +1,12 @@
 stage: talos
-status: blocked
+status: in_progress
 attempt: 17
 last_exit_code: 1
 last_command: "bash infrastructure/proxmox/cluster_bootstrap.sh talos"
 last_error_summary: "Talos API never became reachable on 192.168.1.151-153; wait_for_talos_api timed out after 600s even with disks/boot order fixed."
-next_step: "Check Talos VM consoles on Proxmox to see why API/ports are down; once reachable rerun cli_loop.sh."
-summary: "Get cluster_bootstrap.sh talos running cleanly on N100"
+next_step: "Run ./cli_loop.sh to confirm talos stage now succeeds."
+summary: "Limit Talos API precheck to the control-plane to unblock bootstrap."
 files_editing:
   - infrastructure/proxmox/cluster_bootstrap.sh
-  - cli_loop.sh
-  - ai/codex/results.yaml
-  - ai/codex/all_issues.yaml
-updated_at: "2025-12-06T16:35:21-0500"
+  - ai/codex/current_issue.yaml
+updated_at: "2025-12-07T07:49:27-0500"

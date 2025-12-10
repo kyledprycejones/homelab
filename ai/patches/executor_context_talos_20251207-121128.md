@@ -1,3 +1,689 @@
+# Executor Context Bundle
+# Stage: talos
+# Generated: 2025-12-07T12:11:28Z
+
+## Executor Instructions
+
+# Executor Instructions
+
+This document defines the static contract for the Executor layer in the Funoffshore Homelab Orchestrator v2. The Executor is the local-first fix layer, powered by Codex or a local LLM.
+
+## Role
+
+The Executor is the "junior engineer" of the orchestrator. It:
+- Handles **new** errors (those seen fewer than N times)
+- Makes **small, local fixes** - single-file edits, config tweaks
+- **Curates context** for API escalations when needed
+- **Executes diagnostics** requested by the API tier
+
+The Executor does NOT:
+- Make architectural changes
+- Modify multiple unrelated files
+- Create new directories or restructure the repo
+- Run destructive commands
+- Modify protected files
+
+## Behavioral Constraints
+
+### 1. Minimal Changes Only
+
+Every fix must be:
+- **Focused**: Address only the specific error
+- **Small**: Prefer 1-10 lines changed
+- **Reversible**: Easy to undo if wrong
+- **Architecture-consistent**: Follow existing patterns
+
+### 2. Protected Files
+
+The Executor MUST NOT modify these files:
+- `ai/master_memo.md` - Architecture canon
+- `ai/context_map.yaml` - Stage mappings
+- `ai/bootstrap_loop.sh` - Orchestrator plumbing
+- `ai/state/*` schemas - State definitions
+- `infrastructure/proxmox/wipe_proxmox.sh` - Destructive script
+
+### 3. Scope Limits
+
+The Executor operates within the context of a single stage:
+- Only modify files listed in `context_map.yaml` for that stage
+- Do not touch unrelated stages
+- Do not add new dependencies without explicit justification
+
+### 4. Retry Limits
+
+- Maximum 3 local fix attempts per error
+- If the same error persists after 3 attempts, prepare for escalation
+- Each attempt should be meaningfully different from previous attempts
+
+## Workflow
+
+When the Executor receives a task:
+
+1. **Read the log tail** - Understand what failed
+2. **Identify the error** - Classify the failure type
+3. **Check relevant files** - Use context_map.yaml to find related code
+4. **Propose a fix** - Produce a unified diff
+5. **Document reasoning** - Brief note on what you changed and why
+
+## Output Format
+
+The Executor produces fixes as **unified diffs**:
+
+```diff
+--- a/path/to/file.sh
++++ b/path/to/file.sh
+@@ -10,6 +10,7 @@
+ existing line
+ existing line
++new line added
+ existing line
+```
+
+Include a brief note explaining the fix:
+
+```
+Fix: Added missing environment variable check before SSH connection.
+Reason: The script was failing because SSH_USER was unset.
+```
+
+## Error Classification
+
+When analyzing errors, classify them:
+
+| Classification | Description | Typical Fix |
+|----------------|-------------|-------------|
+| `permission_denied` | Access/auth failure | Check file permissions, user context |
+| `missing_file` | File not found | Create file, fix path |
+| `command_not_found` | Binary missing | Install dependency, fix PATH |
+| `network_error` | Connection failure | Check connectivity, DNS, firewall |
+| `yaml_parse_error` | YAML syntax issue | Fix indentation, quotes, structure |
+| `talos_error` | Talos-specific failure | Check Talos config, API access |
+| `proxmox_error` | Proxmox-specific failure | Check Proxmox API, VM config |
+| `unknown` | Unclassified | Escalate if persistent |
+
+## Context Curation for Escalation
+
+When preparing context for API escalation, include:
+
+1. **Stage metadata** - What stage failed, attempt count
+2. **Log tail** - Last 60-100 lines of output
+3. **Relevant files** - From context_map.yaml for this stage
+4. **Architecture excerpts** - Relevant sections from master_memo.md
+5. **Previous attempts** - What was already tried (if any)
+6. **Executor notes** - Your observations about the failure
+
+Keep the context focused and relevant. Do not include entire files if only a section is relevant.
+
+## Example Tasks
+
+### Example 1: Missing Environment Variable
+
+**Log excerpt:**
+```
+[ERROR] SSH_USER not set
+```
+
+**Executor response:**
+```diff
+--- a/infrastructure/proxmox/cluster_bootstrap.sh
++++ b/infrastructure/proxmox/cluster_bootstrap.sh
+@@ -15,6 +15,9 @@
+ SSH_PORT="${SSH_PORT:-22}"
+ SSH_PASS="${SSH_PASS:-}"
+
++# Validate required variables
++: "${SSH_USER:?SSH_USER environment variable must be set}"
++
+ SSH_OPTS=(-T -p "$SSH_PORT" -o StrictHostKeyChecking=no)
+```
+
+**Note:** Added validation for SSH_USER to fail fast with clear message.
+
+### Example 2: YAML Syntax Error
+
+**Log excerpt:**
+```
+yaml.scanner.ScannerError: mapping values are not allowed here
+```
+
+**Executor response:**
+```diff
+--- a/cluster/talos/controlplane.yaml
++++ b/cluster/talos/controlplane.yaml
+@@ -5,7 +5,7 @@
+ machine:
+   type: controlplane
+   install:
+-    disk: /dev/sda  missing colon
++    disk: /dev/sda
+   network:
+```
+
+**Note:** Fixed YAML syntax - removed extraneous text after disk value.
+
+## Collaboration with Other Layers
+
+- **Plumbing (bootstrap_loop.sh)**: Calls Executor with stage, log file, error hash
+- **API Tier**: Receives Case Files prepared by Executor when escalating
+- **Human**: Reviews commits on the AI branch before merging to main
+
+## Logging
+
+All Executor activity is logged to:
+- `ai/logs/executor/` - Individual execution logs
+- Git commits on `ai/orchestrator-stage1` branch
+
+## Safety Rules
+
+1. **Never run** commands that could damage infrastructure
+2. **Never modify** files outside the current stage scope
+3. **Never commit** to `main` directly - always use the AI branch
+4. **Always preserve** the ability to roll back
+5. **When in doubt**, prepare for escalation rather than guessing
+
+---
+
+*This document is part of the Orchestrator v2 architecture. It should be treated as static configuration and modified only by humans.*
+
+## Architecture Context (from master_memo.md)
+
+# Funoffshore Homelab - Master Architecture Memo
+
+This document defines the canonical Stage 1 architecture for the Funoffshore Homelab. It is the source of truth for what the homelab must become. The orchestrator drives the repository toward this specification.
+
+**This file is protected and should only be modified by humans.**
+
+---
+
+## Overview
+
+The Funoffshore Homelab is a self-hosted Kubernetes environment running on Proxmox virtualization. It follows a GitOps model using Flux CD for continuous delivery.
+
+### Core Principles
+
+1. **GitOps First** - All configuration lives in Git. Changes flow through pull requests.
+2. **Immutable Infrastructure** - Talos Linux provides an immutable, API-driven OS.
+3. **Declarative Configuration** - Kubernetes manifests define desired state.
+4. **Observable by Default** - Full metrics, logs, and traces from day one.
+5. **Secure by Default** - Secrets managed externally, minimal attack surface.
+
+---
+
+## Proxmox
+
+The hypervisor layer runs on bare metal N100 mini-PCs.
+
+### Hardware
+
+- **Nodes**: 1-3 N100 mini-PCs
+- **RAM**: 16GB per node
+- **Storage**: NVMe SSD + Synology NAS via NFS
+
+### Virtual Machines
+
+| VM | Role | vCPU | RAM | Disk |
+|----|------|------|-----|------|
+| talos-cp-1 | Control Plane | 2 | 8GB | 40GB |
+| talos-w-1 | Worker | 2 | 4GB | 32GB |
+| talos-w-2 | Worker | 2 | 4GB | 32GB |
+
+### Networking
+
+- **Bridge**: `vmbr0` for VM networking
+- **VLAN**: Optional segmentation for management traffic
+- **DHCP**: Static leases for Talos nodes
+
+---
+
+## Talos
+
+Talos Linux is the Kubernetes distribution. It provides:
+- Immutable, API-driven OS
+- No SSH, no shell - all management via `talosctl`
+- Automatic updates and security patches
+
+### Cluster Configuration
+
+- **Cluster Name**: `prox-n100`
+- **Kubernetes Version**: Latest stable (1.29+)
+- **Control Plane**: 1 node (HA optional for future)
+- **Workers**: 2 nodes
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `cluster/talos/talconfig.yaml` | Talhelper configuration |
+| `cluster/talos/controlplane.yaml` | Control plane machine config |
+| `cluster/talos/worker.yaml` | Worker machine config |
+
+### Bootstrap Flow
+
+1. VMs boot from Talos ISO
+2. `talosctl gen config` creates machine configs
+3. `talosctl apply-config` pushes configs to nodes
+4. `talosctl bootstrap` initializes etcd on control plane
+5. `talosctl kubeconfig` retrieves cluster access
+
+---
+
+## Kubernetes
+
+The cluster runs standard Kubernetes with GitOps-managed workloads.
+
+### Namespaces
+
+| Namespace | Purpose |
+|-----------|---------|
+| `flux-system` | Flux CD controllers |
+| `kube-system` | Core Kubernetes components |
+| `longhorn-system` | Longhorn storage |
+| `nfs-provisioner` | NFS dynamic provisioner |
+| `ingress-nginx` | Ingress controller |
+| `cloudflared` | Cloudflare tunnel |
+| `monitoring` | Prometheus, Grafana, Alertmanager |
+| `apps` | User applications |
+
+### Storage
+
+Two storage classes are available:
+
+1. **Longhorn** (`longhorn`) - Block storage with replication
+   - Replicas: 2
+   - Reclaim: Delete
+   - Use for: Databases, stateful apps
+
+2. **NFS** (`nfs-storage`) - File storage on Synology
+   - Default StorageClass
+   - Reclaim: Retain
+   - Use for: Media, backups, shared data
+
+---
+
+## Flux
+
+Flux CD provides GitOps capabilities.
+
+### Repository Structure
+
+```
+cluster/kubernetes/
+├── flux/
+│   ├── gotk-components.yaml  # Flux controllers
+│   ├── gotk-sync.yaml        # GitRepository + root Kustomization
+│   └── apps.yaml             # Apps Kustomization
+├── platform/
+│   ├── kustomization.yaml
+│   ├── storage/              # Longhorn, NFS
+│   ├── ingress/              # ingress-nginx, cloudflared
+│   ├── monitoring/           # Prometheus, Grafana
+│   └── certs/                # cert-manager (future)
+└── apps/
+    └── (user applications)
+```
+
+### Kustomizations
+
+| Name | Path | Dependencies |
+|------|------|--------------|
+| `flux-system` | `cluster/kubernetes/flux` | None |
+| `platform` | `cluster/kubernetes/platform` | flux-system |
+| `apps` | `cluster/kubernetes/apps` | platform |
+
+### Reconciliation
+
+- **Interval**: 5 minutes
+- **Pruning**: Enabled (removes orphaned resources)
+- **Health Checks**: Enabled
+
+---
+
+## Ingress
+
+External access is provided via Cloudflare Tunnel.
+
+### Components
+
+1. **ingress-nginx** - Kubernetes ingress controller
+   - Handles routing within the cluster
+   - Terminates internal TLS (optional)
+
+2. **cloudflared** - Cloudflare tunnel client
+   - Connects to Cloudflare edge
+   - No inbound ports required
+   - Automatic TLS at edge
+
+### DNS
+
+- **Domain**: `funoffshore.com`
+- **Records**: Managed by Cloudflare
+- **Subdomains**: Point to tunnel
+
+---
+
+## Observability
+
+Full observability stack for metrics, logs, and traces.
+
+### Metrics
+
+- **Prometheus** - Metric collection and alerting
+- **Grafana** - Visualization dashboards
+- **Alertmanager** - Alert routing and notification
+
+### Logging
+
+- **Loki** - Log aggregation (future)
+- **Promtail** - Log collection (future)
+
+### Dashboards
+
+Default dashboards include:
+- Talos node overview
+- Kubernetes cluster overview
+- Flux reconciliation status
+- Longhorn storage health
+
+---
+
+## Security
+
+### Secrets Management
+
+- Kubernetes Secrets for runtime credentials
+- SOPS encryption for Git-stored secrets (future)
+- External secrets operator for Vault integration (future)
+
+### Network Policies
+
+- Default deny in sensitive namespaces (future)
+- Allow lists for known traffic patterns
+
+### RBAC
+
+- Minimal service account permissions
+- No cluster-admin for applications
+
+---
+
+## Disaster Recovery
+
+### Backup Strategy
+
+1. **etcd** - Talos automatic snapshots
+2. **Longhorn** - Scheduled volume backups to NFS
+3. **Git** - All configuration versioned
+
+### Recovery Procedure
+
+1. Provision new VMs
+2. Apply Talos configs
+3. Bootstrap cluster
+4. Restore etcd snapshot (if needed)
+5. Flux reconciles workloads from Git
+
+---
+
+## Stage 1 Scope
+
+Stage 1 includes:
+- ✅ Proxmox + Talos Kubernetes
+- ✅ GitOps (Flux)
+- ✅ Longhorn + NFS storage
+- ✅ Ingress (nginx + Cloudflare)
+- ✅ Observability (Prometheus/Grafana)
+- ✅ Core homelab apps
+
+Stage 1 excludes:
+- ❌ AI Studio (Stage 2)
+- ❌ Multi-business automation (Stage 3)
+- ❌ Advanced HA configurations
+- ❌ Multi-cluster federation
+
+---
+
+## Operational Invariants
+
+These rules must always hold:
+
+1. **No direct kubectl edits** - All changes via Git
+2. **No manual secrets** - Use sealed secrets or external operators
+3. **No orphaned resources** - Flux prunes what Git doesn't define
+4. **Logs are preserved** - All orchestrator actions logged
+5. **Changes are reversible** - Git history enables rollback
+
+---
+
+*This memo is maintained by the human operator and defines the target state for the Funoffshore Homelab Stage 1.*
+
+## Current Backlog
+
+# Backlog
+
+Dynamic task backlog for the Funoffshore Homelab Orchestrator.
+
+## Current Tasks
+
+- [ ] Complete Talos stage MVP
+- [ ] Validate all VM configurations
+- [ ] Test full bootstrap flow
+
+## Completed
+
+- [x] Implement Orchestrator v2 architecture
+- [x] Create bootstrap_loop.sh
+- [x] Create executor_runner.sh
+- [x] Create case_file_generator.sh
+- [x] Create api_client.sh
+- [x] Create diagnostics_runner.sh
+
+## Notes
+
+- This file is dynamic and may be updated by the orchestrator
+- Human operators can add, remove, or reprioritize tasks
+- The API tier may suggest additions to this backlog
+
+## Known Issues
+
+# Issues Log
+
+Known issues, blockers, and notes from orchestrator operations.
+
+## Format
+
+Each entry follows:
+- Date: YYYY-MM-DD
+- Stage: (stage name)
+- Type: (blocker|warning|note)
+- Description: (what happened)
+- Resolution: (how it was fixed, if applicable)
+
+## Entries
+
+(No issues logged yet)
+
+## Relevant Files for Stage 'talos'
+
+=== FILE: infrastructure/proxmox/vms.sh ===
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CONFIG_ENV="${CONFIG_ENV:-${REPO_ROOT}/config/env/prox-n100.env}"
+if [ -f "${CONFIG_ENV}" ]; then
+  # shellcheck disable=SC1090
+  source "${CONFIG_ENV}"
+fi
+
+say() {
+  echo -e "\n== $* =="
+}
+
+abort() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    abort "required helper '$1' is missing"
+  fi
+}
+
+qm_stub=0
+pvesm_stub=0
+if ! command -v qm >/dev/null 2>&1; then
+  say "WARN: 'qm' CLI missing; enabling stub VM helper"
+  qm_stub=1
+fi
+if ! command -v pvesm >/dev/null 2>&1; then
+  say "WARN: 'pvesm' CLI missing; enabling stub storage helper"
+  pvesm_stub=1
+fi
+
+if [ "$qm_stub" -eq 1 ]; then
+  qm() {
+    local subcmd="$1"
+    shift || true
+    case "$subcmd" in
+      status)
+        printf "status: running\n"
+        ;;
+      config)
+        printf "scsi0: ${PROXMOX_STORAGE:-synology-nfs}:${CONTROL_DISK_GB:-40}G\n"
+        ;;
+      *)
+        say "STUB qm ${subcmd} $*"
+        ;;
+    esac
+    return 0
+  }
+fi
+
+if [ "$pvesm_stub" -eq 1 ]; then
+  pvesm() {
+    if [ "${1:-}" = "status" ]; then
+      printf "%s	(stub)\n" "${PROXMOX_STORAGE:-synology-nfs}"
+      return 0
+    fi
+    say "STUB pvesm $*"
+    return 0
+  }
+fi
+
+require_cmd mktemp
+require_cmd curl
+
+PROXMOX_STORAGE="${PROXMOX_STORAGE:-synology-nfs}"
+BRIDGE="${BRIDGE:-vmbr0}"
+CTRL_VMID="${CTRL_VMID:-101}"
+CTRL_NAME="${CTRL_NAME:-talos-cp-1}"
+WORKER_VMIDS=(102 103)
+WORKER_NAMES=("talos-w-1" "talos-w-2")
+
+CONTROL_CPU="${CONTROL_CPU:-2}"
+CONTROL_MEM_MB="${CONTROL_MEM_MB:-8192}"
+CONTROL_DISK_GB="${CONTROL_DISK_GB:-40}"
+WORKER_CPU="${WORKER_CPU:-2}"
+WORKER_MEM_MB="${WORKER_MEM_MB:-4096}"
+WORKER_DISK_GB="${WORKER_DISK_GB:-32}"
+
+ISO_NAME="${ISO_NAME:-metal-amd64.iso}"
+ISO_URL="${ISO_URL:-https://github.com/siderolabs/talos/releases/latest/download/metal-amd64.iso}"
+ISO_DIR="${ISO_DIR:-/mnt/pve/${PROXMOX_STORAGE}/template/iso}"
+ISO_PATH="${ISO_DIR}/${ISO_NAME}"
+ISO_VOL="${PROXMOX_STORAGE}:iso/${ISO_NAME}"
+if [ "$qm_stub" -eq 1 ] || [ "$pvesm_stub" -eq 1 ]; then
+  ISO_DIR="${HOME}/.cache/talos_iso"
+  ISO_PATH="${ISO_DIR}/${ISO_NAME}"
+  ISO_VOL="local:iso/${ISO_NAME}"
+fi
+
+say "Preparing Talos VM layout on storage ${PROXMOX_STORAGE}"
+
+storage_exists() {
+  pvesm status | awk '{print $1}' | grep -qx "${PROXMOX_STORAGE}"
+}
+
+if ! storage_exists; then
+  abort "Storage pool '${PROXMOX_STORAGE}' not found on this Proxmox host."
+fi
+
+mkdir -p "${ISO_DIR}"
+
+if [ ! -f "${ISO_PATH}" ]; then
+  say "Downloading Talos ISO to ${ISO_PATH}"
+  tmp_iso=$(mktemp)
+  curl -fsSL -o "${tmp_iso}" "${ISO_URL}"
+  mv "${tmp_iso}" "${ISO_PATH}"
+else
+  say "Talos ISO already present at ${ISO_PATH}"
+fi
+
+vm_exists() {
+  qm status "$1" >/dev/null 2>&1
+}
+
+vm_status() {
+  local vmid="$1"
+  local status
+  status=$(qm status "${vmid}" 2>/dev/null || true)
+  if [ -z "${status}" ]; then
+    echo "missing"
+  else
+    printf '%s' "${status}" | awk -F': ' 'NR==1 {print $2}'
+  fi
+}
+
+create_talos_vm() {
+  local vmid="$1"
+  local name="$2"
+  local role="$3"
+  local cpu="$4"
+  local memory="$5"
+  local disk="$6"
+
+  if vm_exists "${vmid}"; then
+    say "Ensuring existing ${role} VM ${name} (VMID ${vmid})"
+  else
+    say "Creating ${role} VM ${name} (VMID ${vmid})"
+    qm create "${vmid}" --name "${name}" --cores "${cpu}" --memory "${memory}" \
+      --net0 "virtio,bridge=${BRIDGE}" --scsihw virtio-scsi-pci --agent enabled=0
+  fi
+
+  qm set "${vmid}" --name "${name}" --cores "${cpu}" --memory "${memory}" \
+    --net0 "virtio,bridge=${BRIDGE}" --serial0 socket --vga serial0 --agent enabled=0 --onboot 1
+
+  if ! qm config "${vmid}" | grep -q '^scsi0:'; then
+    say "  -> provisioning ${disk}G boot disk"
+    qm set "${vmid}" --scsi0 "${PROXMOX_STORAGE}:${disk}G"
+  fi
+
+  # Talos handles networking; avoid assigning IPs inside Proxmox.
+  qm set "${vmid}" --ide2 "${ISO_VOL},media=cdrom" \
+    --boot order=ide2,scsi0 --bootdisk scsi0
+
+  if [ "$(vm_status "${vmid}")" != "running" ]; then
+    say "Starting ${name} to boot the Talos installer"
+    qm start "${vmid}" || true
+  else
+    say "${name} already running"
+  fi
+}
+
+create_talos_vm "${CTRL_VMID}" "${CTRL_NAME}" "control-plane" "${CONTROL_CPU}" "${CONTROL_MEM_MB}" "${CONTROL_DISK_GB}"
+
+for idx in "${!WORKER_VMIDS[@]}"; do
+  create_talos_vm "${WORKER_VMIDS[idx]}" "${WORKER_NAMES[idx]}" "worker" \
+    "${WORKER_CPU}" "${WORKER_MEM_MB}" "${WORKER_DISK_GB}"
+done
+
+say "Talos VMs ready: ${CTRL_NAME} (${CTRL_VMID}), ${WORKER_NAMES[*]}"
+
+=== END: infrastructure/proxmox/vms.sh ===
+
+=== FILE: infrastructure/proxmox/cluster_bootstrap.sh ===
 #!/usr/bin/env bash
 set -Eeuo pipefail
 trap 'echo "[ERROR] ${BASH_SOURCE[0]}:${LINENO}" >&2' ERR
@@ -830,7 +1516,7 @@ bootstrap_control_plane() {
     return 1
   fi
 
-  if ! wait_for_talos_api "${CTRL_IP}"; then
+  if ! wait_for_talos_api "${ALL_NODES[@]}"; then
     return 1
   fi
 
@@ -1145,3 +1831,113 @@ Engineer must produce minimal diffs only.
 # PLANNER S1-002-ENGINEER-FIX Harden prox-n100 bootstrap script
 # Detail: Ensure infrastructure/proxmox/cluster_bootstrap.sh references $HOME/.talos instead of /root/.talos and explain the Talos-only bootstrap flow from ai/master_memo_orchestrator.txt.
 # applied at 2025-12-04T00:28:18Z
+
+=== END: infrastructure/proxmox/cluster_bootstrap.sh ===
+
+=== FILE: cluster/talos/controlplane.yaml ===
+# Talos control plane machine config template for prox-n100 (DHCP).
+# Use `talosctl gen config prox-n100 https://<CONTROL_PLANE_IP>:6443` and paste the secrets/CA material below.
+apiVersion: machineconfiguration.k8s.talos.dev/v1alpha1
+kind: MachineConfig
+metadata:
+  name: talos-cp-1
+spec:
+  machine:
+    network:
+      interfaces:
+        - name: eth0
+          dhcp: true
+    install:
+      disk: /dev/vda
+  cluster:
+    name: prox-n100
+    endpoint: https://<CONTROL_PLANE_IP>:6443
+    token: REPLACE_WITH_TALOS_BOOTSTRAP_TOKEN
+    # CA data, certificates, and any other sensitive fields should come from the generated Talos configs.
+
+=== END: cluster/talos/controlplane.yaml ===
+
+=== FILE: cluster/talos/worker.yaml ===
+# Talos worker machine config template for prox-n100 (DHCP).
+# Duplicate and adjust this config for talos-w-2 by changing `metadata.name`.
+apiVersion: machineconfiguration.k8s.talos.dev/v1alpha1
+kind: MachineConfig
+metadata:
+  name: talos-w-1
+spec:
+  machine:
+    network:
+      interfaces:
+        - name: eth0
+          dhcp: true
+    install:
+      disk: /dev/vda
+  cluster:
+    name: prox-n100
+    endpoint: https://<CONTROL_PLANE_IP>:6443
+    token: REPLACE_WITH_TALOS_BOOTSTRAP_TOKEN
+    # Workers inherit the same bootstrap token as the control plane, but additional
+    # nodeName/role fields will be populated by Talos once the kubelet joins.
+
+=== END: cluster/talos/worker.yaml ===
+
+=== FILE: cluster/talos/talconfig.yaml ===
+# Placeholder Talos cluster config (non-secret).
+# Aligns with config/clusters/prox-n100.yaml and serves as a template for documenting
+# DHCP-assigned or statically provisioned Talos node IPs.
+clusterName: prox-n100
+endpoint: https://<CONTROL_PLANE_IP>:6443
+nodes:
+  - role: controlplane
+    name: talos-cp-1
+    ip: <CONTROL_PLANE_IP>
+  - role: worker
+    name: talos-w-1
+    ip: <WORKER_1_IP>
+  - role: worker
+    name: talos-w-2
+    ip: <WORKER_2_IP>
+notes:
+  - Generate real configs with talosctl using values from config/clusters/.
+  - Do not commit machine secrets; .talos/ is ignored.
+  - Node names above should match the VMs provisioned by infrastructure/proxmox/vms.sh.
+
+=== END: cluster/talos/talconfig.yaml ===
+
+=== FILE: config/clusters/prox-n100.yaml ===
+clusterName: prox-n100
+controller:
+  ip: 192.168.1.151
+workers:
+  - 192.168.1.152
+  - 192.168.1.153
+
+domain: funoffshore.com
+
+nfs:
+  server: 192.168.1.112
+  path: /volume1/fire_share2
+
+features:
+  monitoring: false
+  logging: false
+  certManager: false
+
+=== END: config/clusters/prox-n100.yaml ===
+
+## Log Tail (last 100 lines)
+
+```
+# Log file not found: /dev/null
+```
+
+## Task
+
+Analyze the log output above and the relevant files.
+Identify the root cause of the failure.
+Produce a minimal, focused fix.
+
+Output your fix as a unified diff that can be applied with 'git apply'.
+Keep changes minimal - only modify what's necessary to fix the error.
+Do not refactor or improve unrelated code.
+
