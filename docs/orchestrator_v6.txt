@@ -1,0 +1,6 @@
+# Orchestrator v6 (archived)
+
+This doc is an archival snapshot of the legacy orchestrator pipeline. Stage
+1 now targets Ubuntu Server + k3s, so refer to `docs/master_memo.txt`,
+`infrastructure/proxmox/README.md`, and the new scripts instead of editing this
+legacy artifact.

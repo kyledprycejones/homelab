@@ -26,9 +26,6 @@ case "$persona" in
   planner)
     ai/orchestrator/lib/persona_planner.sh "$task_id"
     ;;
-  engineer)
-    ai/orchestrator/lib/persona_engineer.sh "$task_id"
-    ;;
   executor)
     ai/orchestrator/lib/persona_executor.sh "$task_id"
     ;;

@@ -1,0 +1,5 @@
+# Orchestrator v5 (archived)
+
+This text recorded the earlier bootstrap narratives. Stage 1 has moved on to
+Ubuntu Server + k3s VMs; consult `docs/master_memo.txt` and the infrastructure
+quickstarts for the live instructions. Treat this file as historical context only.

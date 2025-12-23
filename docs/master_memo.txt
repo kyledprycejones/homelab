@@ -1,0 +1,381 @@
+Funoffshore Homelab — Stage 1 Target Architecture
+
+Repo root:
+/Users/kyle/Documents/repos/homelab
+
+This memo defines the canonical, production-style architecture for the Funoffshore Homelab Stage 1 environment.
+It describes what the homelab must become, not how an AI/agent should behave.
+
+You may only move the repository toward this architecture with small, incremental, architecture-consistent changes.
+
+1. Stage 1 Scope (Only Stage in Effect)
+
+Stage 1 includes all infrastructure, cluster, and application layers needed to operate a stable Ubuntu Server VM–based Kubernetes platform using k3s, with swap enabled on Proxmox with GitOps, storage, observability, ingress, and standard homelab apps.
+
+All work should converge toward this architecture.
+Do not reference or implement Stage 0, Stage 2, or any agent/orchestrator systems within this document.
+
+2. Canonical Physical & Hypervisor Architecture
+2.1 Hardware
+
+Primary compute: N100 Proxmox node(s)
+
+Networked storage: Synology NAS (NFS exports)
+
+2.2 Hypervisor
+
+Proxmox running on the N100
+
+VMs must follow this pattern:
+
+Ubuntu Server (minimal) control-plane VM(s) running k3s
+
+Ubuntu Server (minimal) worker VM(s) running k3s
+
+3. Ubuntu + k3s Kubernetes Architecture
+
+The Kubernetes cluster runs on lightweight Ubuntu Server VMs using k3s.
+
+k3s-related artifacts and bootstrap logic live under:
+
+cluster/kubernetes/
+
+The cluster must:
+
+- Run on minimal Ubuntu Server installs (no desktop)
+- Allow swap to remain enabled on all nodes
+- Be bootstrapped consistently across Proxmox VMs
+- Use standard Linux debugging and administration tools
+- Integrate with Flux for GitOps-driven lifecycle management
+
+Swap Policy:
+Swap is intentionally enabled on all nodes. No automation may disable swap or enforce kubelet configurations that require swap to be off.
+
+4. GitOps Architecture & Repo Layout
+
+This is the canonical repository skeleton and must be preserved.
+
+cluster/
+  kubernetes/
+    flux/
+      flux-install.yaml
+      gotk-*.yaml
+      apps.yaml
+      kustomization.yaml
+
+    platform/
+      ingress/
+        cloudflared/
+        gateway-api/
+      dns/
+        external-dns/
+      certs/
+      storage/
+        longhorn/
+        nfs-subdir/
+      logging/
+        loki/
+        promtail/
+      monitoring/
+        prometheus/
+        grafana/
+        metrics-server/
+        alertmanager/
+      security/
+      # Observability/OTel collector may live here
+
+    apps/
+      media/
+        jellyfin/
+        jellyseer/
+        navidrome/
+      tools/
+        ai-studio/      # placeholder; no Stage 2 logic required
+        portainer/
+        syncthing/
+        tailscale/
+        vscode-server/
+      games/
+        minecraft/
+      demos/
+
+config/
+  clusters/
+    prox-n100.yaml
+  env/
+    prox-n100.env     # human-managed, not machine-edited
+
+infrastructure/
+  proxmox/
+    cluster_bootstrap.sh
+  synology/
+    setup.sh
+
+docs/
+  architecture.md
+  stage1_k3s_overview.md
+  bootstrap-stages.md
+
+ai/
+  # May contain helper scripts or logs, but AI logic is not part of Stage 1.
+
+
+No new top-level directories should be introduced for Stage 1 components.
+Modifications should maintain or deepen this structure, not replace it.
+
+5. Storage Architecture (Canonical)
+
+Stage 1 uses two storage layers, each with clear responsibility:
+
+5.1 Longhorn — Block Storage
+
+Deployed under: cluster/kubernetes/platform/storage/longhorn/
+
+Used for:
+
+Stateful workloads needing RWO/RWX
+
+Databases
+
+Applications where block-level semantics are required
+
+Longhorn must remain the only block-storage engine in Stage 1.
+
+5.2 NFS Subdir Provisioner — Bulk Storage
+
+Lives under: cluster/kubernetes/platform/storage/nfs-subdir/
+
+Backed by Synology NFS exports
+
+Used for:
+
+Media libraries (Jellyfin, qBittorrent, Radarr…)
+
+Backup directories
+
+Large unstructured or archival data
+
+No Ceph/Rook/ZFS-CSI/etc. may replace this dual-storage model.
+
+6. Observability & Telemetry Architecture
+
+The homelab must converge toward a complete metrics + logs + traces observability stack.
+
+6.1 Metrics
+
+Located under: cluster/kubernetes/platform/monitoring/
+
+Prometheus
+
+Alertmanager
+
+metrics-server
+
+6.2 Logs
+
+Located under: cluster/kubernetes/platform/logging/
+
+Loki
+
+Promtail DaemonSet
+
+6.3 Traces & OTel
+
+A canonical OTel Collector must be deployed under either:
+
+cluster/kubernetes/platform/observability/otel-collector/
+
+
+or
+
+cluster/kubernetes/platform/monitoring/otel-collector/
+
+
+The OTel Collector must:
+
+Receive OTLP over gRPC and HTTP
+
+Accept telemetry from:
+
+instrumented apps
+
+host agents (optional)
+
+Prometheus remote_write or similar mechanisms
+
+Export to:
+
+Traces backend (Tempo/Jaeger)
+
+Loki (logs)
+
+Prometheus or remote OTLP metrics sinks
+
+You may introduce a traces backend (Tempo/Jaeger), but must not replace Prometheus/Loki/Grafana.
+
+6.4 Grafana
+
+Grafana must integrate with:
+
+Prometheus (metrics)
+
+Loki (logs)
+
+The chosen traces backend
+
+Dashboards must include:
+
+Kubernetes cluster health
+
+Node metrics
+
+Node OS (Ubuntu) and k3s control-plane signals
+
+Proxmox/Synology telemetry (eventually)
+
+6.5 Secrets Management (Canonical)
+
+Git contains encrypted secrets only.
+
+Use SOPS + age for secrets.
+
+Flux decrypts at apply-time.
+
+Age private key is human-managed and must not be committed.
+
+No plaintext Secret manifests in Git.
+
+No Vault required in Stage 1.
+
+No OIDC/SSO requirement in Stage 1.
+
+7. Networking, Ingress, Zero-Trust Access
+
+7.1 Ingress (Gateway API)
+Envoy Gateway + Kubernetes Gateway API
+cluster/kubernetes/platform/ingress/gateway-api/
+
+Gateway API resources (Gateway/HTTPRoute) are the only supported ingress API.
+Ingress resources are not used (except temporary migration stubs if ever needed).
+
+7.2 Secure Remote Access
+
+Cloudflare Tunnel (cloudflared)
+cluster/kubernetes/platform/ingress/cloudflared/
+
+External DNS (Cloudflare provider)
+cluster/kubernetes/platform/dns/external-dns/
+
+Tailscale
+cluster/kubernetes/apps/tools/tailscale/
+
+Cloudflare routing stays minimal: *.funoffshore.com routes through the Tunnel to the in-cluster ingress entrypoint.
+
+Kubernetes (Gateway/HTTPRoute) owns all per-app routing; no per-app Cloudflare UI routing rules.
+
+No NodePorts exposed publicly.
+
+Public exposure is allowlist-based.
+
+8. Application Layer
+
+Applications must follow this layout:
+
+8.1 Media Stack
+
+Under cluster/kubernetes/apps/media/
+
+Jellyfin
+
+Jellyseer
+
+Navidrome
+
+Use:
+
+NFS for large libraries
+
+Longhorn only for stateful metadata if needed
+
+Only Jellyfin/Jellyseer/Navidrome are allowed to be publicly exposed via Cloudflare + Gateway API unless explicitly added later.
+
+8.2 Tools
+
+Under cluster/kubernetes/apps/tools/
+
+Portainer
+
+Syncthing
+
+Tailscale
+
+VSCode Server
+
+AI Studio placeholder (no Stage 2 logic)
+
+8.3 Games
+
+Under cluster/kubernetes/apps/games/minecraft/
+
+8.4 Demos
+
+Small apps placed under cluster/kubernetes/apps/demos/
+
+Changes to apps should use:
+
+Kustomize overlays
+
+Small HelmRelease values files
+
+Existing storage/ingress/observability pieces
+Not custom reinvented platforms.
+
+9. Synology Integration
+
+Synology is responsible for:
+
+Exporting NFS mounts used by NFS subdir provisioner
+
+Providing bulk storage for large media and archives
+
+Acting as an optional backup target for Longhorn snapshots/backups
+
+Scripts related to Synology live under:
+
+infrastructure/synology/setup.sh
+
+10. Proxmox Integration
+
+Proxmox-related automation and bootstrap scripts live under:
+
+infrastructure/proxmox/
+  cluster_bootstrap.sh
+
+
+The bootstrap process should:
+
+- Create/verify Ubuntu Server (minimal) VMs on Proxmox
+- Apply cloud-init and SSH-based provisioning
+- Install and configure k3s (server then agents)
+- Ensure swap remains enabled and is not disabled by automation
+- Prepare the environment for Flux to take over cluster lifecycle management
+
+10.5 Backup & Recovery (Stage 1)
+
+Tiering:
+- Repo/git is the source of truth.
+- Longhorn snapshots/backups are optional, with Synology as an optional target.
+- NFS media is source-of-truth on Synology.
+
+Restore Goals:
+- Node loss recovery via Longhorn snapshots and cluster state.
+- Full cluster rebuild from Git manifests plus restored volumes.
+
+11. The Immutable Vision
+
+This architecture represents the final, canonical direction of the Funoffshore Homelab Stage 1.
+
+The architecture must not be replaced or re-imagined.
+Only incremental convergence toward this design is allowed.
+
+This memo contains no operational directives—only the target form the repo must evolve toward.

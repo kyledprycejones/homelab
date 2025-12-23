@@ -73,11 +73,11 @@ def parse_backlog(path: Path, limit: int) -> List[dict]:
     for entry in entries:
         if len(items) >= limit:
             break
-        task_id = entry.get("task_id", "unknown")
+        task_id = entry.get("id", "unknown")
         status = entry.get("status", "pending")
         desc = entry.get("description", "").strip()
         line = f"- [{status}] {task_id}: {desc}"
-        checked = status not in {"pending", "waiting_retry", "running"}
+        checked = status not in {"pending", "running"}
         items.append({"line": line, "checked": checked})
     return items
 

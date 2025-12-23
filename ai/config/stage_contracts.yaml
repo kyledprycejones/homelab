@@ -1,0 +1,146 @@
+# Orchestrator v7 P0 - Stage Contracts
+# Each stage must satisfy its gating claims before marking complete.
+# Gating claims use stronger evaluators to prevent "paper convergence."
+
+stages:
+  vms:
+    description: "Proxmox VM creation for Ubuntu Server + k3s nodes"
+    required_artifacts:
+      - cluster_identity  # Must have ctrl_ip, workers populated
+    gating_claims:
+      - id: vms_cluster_config_valid
+        text: "Cluster config YAML is valid and parseable"
+        evaluation:
+          method: yaml_parseable
+          target: config/clusters/prox-n100.yaml
+        priority: gating
+
+      - id: vms_cluster_identity_has_ctrl_ip
+        text: "cluster_identity.json has ctrl_ip populated"
+        evaluation:
+          method: contains_key
+          target: ai/state/cluster_identity.json
+          key_path: ctrl_ip
+        priority: gating
+
+  k3s:
+    description: "k3s bootstrap (control plane + workers)"
+    depends_on: [vms]
+    required_artifacts:
+      - cluster_identity
+      - kubeconfig
+    gating_claims:
+      - id: k3s_cluster_identity_complete
+        text: "cluster_identity.json has ctrl_ip and cluster_endpoint"
+        evaluation:
+          method: contains_key
+          target: ai/state/cluster_identity.json
+          key_path: cluster_endpoint
+        priority: gating
+
+      - id: k3s_kubeconfig_nonempty
+        text: "kubeconfig exists and is non-empty"
+        evaluation:
+          method: file_nonempty
+          target: ai/state/artifacts.json
+        priority: gating
+
+      - id: k3s_kubeconfig_valid
+        text: "kubeconfig artifact is marked valid"
+        evaluation:
+          method: artifact_valid
+          target: ai/state/artifacts.json
+          artifact_name: kubeconfig
+        priority: gating
+
+      - id: k3s_nodes_ready
+        text: "kubectl can list Kubernetes nodes"
+        evaluation:
+          method: command_succeeds
+          target: ""
+          command: "KUBECONFIG=infrastructure/proxmox/k3s/kubeconfig kubectl get nodes --no-headers | grep -q Ready"
+          timeout: 20
+        priority: gating
+
+  infra:
+    description: "Core platform infrastructure (Flux, storage)"
+    depends_on: [k3s]
+    required_artifacts:
+      - kubeconfig
+    gating_claims:
+      - id: infra_kubeconfig_valid
+        text: "kubeconfig artifact is marked valid"
+        evaluation:
+          method: artifact_valid
+          target: ai/state/artifacts.json
+          artifact_name: kubeconfig
+        priority: gating
+
+      - id: infra_kubectl_cluster_info
+        text: "kubectl can reach cluster"
+        evaluation:
+          method: command_succeeds
+          target: ""
+          command: "kubectl cluster-info --request-timeout=10s 2>&1 | head -1"
+          timeout: 15
+        priority: gating
+
+      - id: infra_flux_controllers_running
+        text: "Flux controllers are running"
+        evaluation:
+          method: command_succeeds
+          target: ""
+          command: "kubectl get pods -n flux-system -l app=source-controller -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+          timeout: 15
+        priority: gating
+
+  apps:
+    description: "Homelab applications"
+    depends_on: [infra]
+    required_artifacts: []
+    gating_claims:
+      - id: apps_flux_synced
+        text: "Apps kustomization is reconciled"
+        evaluation:
+          method: command_succeeds
+          target: ""
+          command: "kubectl get kustomization apps -n flux-system -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True"
+          timeout: 15
+        priority: gating
+
+  ingress:
+    description: "Ingress and external access"
+    depends_on: [infra]
+    required_artifacts: []
+    gating_claims:
+      - id: ingress_nginx_running
+        text: "ingress-nginx controller is running"
+        evaluation:
+          method: command_succeeds
+          target: ""
+          command: "kubectl get pods -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+          timeout: 15
+        priority: gating
+
+  obs:
+    description: "Observability stack"
+    depends_on: [infra]
+    required_artifacts: []
+    gating_claims:
+      - id: obs_monitoring_namespace
+        text: "Monitoring namespace exists with pods"
+        evaluation:
+          method: command_succeeds
+          target: ""
+          command: "kubectl get pods -n monitoring --no-headers 2>/dev/null | wc -l | grep -v '^0$'"
+          timeout: 15
+        priority: gating
+
+# Evidence requirements for give_up
+give_up_requirements:
+  must_include:
+    - log_path  # Absolute path to relevant log file
+    - evidence_excerpt  # First 500 chars of error or relevant output
+    - failing_claim_id  # Which gating claim failed
+    - failing_claim_evidence  # Evidence from the failed claim
+    - suggested_next_action  # What should be done next

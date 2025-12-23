@@ -60,10 +60,19 @@ record_last_error(){
   local log_path="$4"
   local stderr_tail="$5"
   local classification="$6"
+  local classification_confidence="${7:-low}"
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   mkdir -p "$(dirname "$LAST_ERROR_FILE")"
+  local signature_source
+  signature_source="${stderr_tail:-$classification}"
+  if [ -z "$signature_source" ] && [ -f "$log_path" ]; then
+    signature_source="$(tail -n 200 "$log_path" 2>/dev/null)"
+  fi
+  local failure_signature
+  failure_signature="sha256:$(printf '%s' "$signature_source" | shasum -a 256 | awk '{print $1}')"
   jq -n --arg task_id "$task_id" --arg persona "$persona" --arg command "$command" --arg log_path "$log_path" \
-    --arg stderr "$stderr_tail" --arg classification "$classification" --arg failed_at "$ts" \
-    '{task_id:$task_id,persona:$persona,command:$command,log_path:$log_path,stderr_tail:$stderr,error_classification:$classification,failed_at:$failed_at}' > "$LAST_ERROR_FILE"
+    --arg stderr "$stderr_tail" --arg classification "$classification" --arg confidence "$classification_confidence" \
+    --arg failed_at "$ts" --arg signature "$failure_signature" \
+    '{task_id:$task_id,persona:$persona,command:$command,log_path:$log_path,stderr_tail:$stderr,error_classification:$classification,classification_confidence:$confidence,failure_signature:$signature,failed_at:$failed_at}' > "$LAST_ERROR_FILE"
 }

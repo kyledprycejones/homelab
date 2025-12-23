@@ -1,9 +1,10 @@
 clusterName: prox-n100
 controller:
-  ip: 192.168.1.151
+  ip: 192.168.1.214
+
 workers:
-  - 192.168.1.152
-  - 192.168.1.153
+  - 192.168.1.215
+  - 192.168.1.216
 
 domain: funoffshore.com
 

@@ -1,213 +1,168 @@
-- id: S1-001-PLANNER-READ-MEMO
+- id: S1-PREFLIGHT-HOST
   stage: 1
-  persona: planner
-  summary: 'Planner: analyze architecture & decide initial Stage-1 roadmap'
-  detail: "Read ai/master_memo.txt and ai/memos/master_memo_orchestrator.txt.\nProduce\
-    \ initial Stage-1 tasks for:\n  - Proxmox VM definitions for Talos (control-plane\
-    \ + worker)\n  - Talos configuration scaffolding (cluster/talos/*.yaml)\n  - Flux\
-    \ GitOps bootstrap layout (cluster/kubernetes/flux/*)\n  - NFS + Longhorn scaffolding\
-    \ directories (empty but present)\nDo NOT write code \u2014 output tasks only.\n"
-  target: ai/master_memo.txt
+  persona: executor
+  summary: 'PREFLIGHT: verify control-plane environment'
+  detail: Run ai/preflight/preflight_tools.sh to confirm required tools and connectivity
+    before Stage 1.
+  target: ai/preflight/preflight_tools.sh
   status: success
   attempts: 0
   max_attempts: 1
   depends_on: []
-  note: Planner added stage work
-- id: S1-001-RUN
+  note: Executor succeeded
+- id: S1-LINT-BACKLOG
   stage: 1
   persona: executor
-  summary: Run Stage 1 bootstrap for prox-n100
-  detail: Execute infrastructure/proxmox/cluster_bootstrap.sh against the prox-n100
-    controller, capture logs, and stop on failure.
-  target: infrastructure/proxmox/cluster_bootstrap.sh
+  summary: 'LINT: validate backlog and targets'
+  detail: Execute ai/scripts/lint_backlog.sh to confirm backlog schema, task ids,
+    and target paths before apply.
+  target: ai/scripts/lint_backlog.sh
+  status: success
+  attempts: 0
+  max_attempts: 1
+  depends_on:
+  - S1-PREFLIGHT-HOST
+  note: Executor succeeded
+- id: S1-PROXMOX-INVENTORY
+  stage: 1
+  persona: executor
+  summary: 'INVENTORY: snapshot Proxmox VMs'
+  detail: Capture qm list --full output on the Proxmox host to feed the provisioning
+    workflow.
+  target: ai/scripts/reconcile_proxmox_inventory.sh
   status: blocked
   attempts: 1
   max_attempts: 1
-  depends_on: []
-  note: Blocked after 1 failures
-- id: S1-002-ENGINEER-SKELETON
-  stage: 1
-  persona: engineer
-  summary: 'Engineer: create empty canonical directories & placeholder manifests'
-  detail: "Create minimal placeholder files and directories, per Planner\u2019s output:\n\
-    \  - cluster/talos/{controlplane.yaml,worker.yaml,talconfig.yaml} (empty stubs)\n\
-    \  - cluster/kubernetes/flux/flux-install.yaml (empty or TODO)\n  - cluster/kubernetes/platform/storage/{longhorn,nfs-subdir}/.keep\n\
-    \  - cluster/kubernetes/platform/ingress/{ingress-nginx,cloudflared}/.keep\n \
-    \ - cluster/kubernetes/platform/dns/external-dns/.keep\nNo real manifests yet\
-    \ \u2014 just skeletons to satisfy orchestration.\n"
-  target: cluster/
-  status: failed
-  attempts: 0
-  max_attempts: 2
   depends_on:
-  - S1-001-PLANNER-READ-MEMO
-  note: Target cluster/ missing
-- id: S1-003-PLANNER-TALOS-LAYOUT
-  stage: 1
-  persona: planner
-  summary: 'Planner: generate tasks for Talos VM creation on Proxmox'
-  detail: "Produce tasks for:\n  - Generating control-plane.yaml + worker.yaml\n \
-    \ - Writing talconfig.yaml with cluster name prox-n100\n  - Creating Proxmox VM\
-    \ definitions for Talos nodes\nDo NOT generate code \u2014 produce only task entries.\n"
-  target: ai/master_memo.txt
-  status: pending
-  attempts: 0
-  max_attempts: 2
-  depends_on:
-  - S1-002-ENGINEER-SKELETON
-  note: ''
-- id: S1-004-ENGINEER-TALOS-CONFIG
-  stage: 1
-  persona: engineer
-  summary: 'Engineer: create minimal Talos config files per Planner'
-  detail: 'Populate controlplane.yaml, worker.yaml, and talconfig.yaml with minimal,
-
-    valid Talos templates (hostname, machine type, cluster name, endpoints).
-
-    No secrets. No advanced settings. Only a minimal valid spec.
-
-    '
-  target: cluster/talos/
-  status: pending
-  attempts: 0
-  max_attempts: 2
-  depends_on:
-  - S1-003-PLANNER-TALOS-LAYOUT
-  note: ''
-- id: S1-005-EXECUTOR-PROX-TEST
-  stage: 1
-  persona: executor
-  summary: 'Executor: verify Proxmox SSH connectivity + environment readiness'
-  detail: "Run a test script:\n  infrastructure/proxmox/check_access.sh\nThis script\
-    \ should:\n  - verify SSH works\n  - verify Proxmox API/CLI reachable\n  - verify\
-    \ /usr/local/bin/talosctl exists or can be installed\nPurpose: ensure environment\
-    \ ready before VM creation.\n"
-  target: infrastructure/proxmox/check_access.sh
-  status: pending
-  attempts: 0
-  max_attempts: 2
-  depends_on:
-  - S1-004-ENGINEER-TALOS-CONFIG
-  note: ''
-- id: S1-006-PLANNER-CREATE-VMS
-  stage: 1
-  persona: planner
-  summary: 'Planner: define executor tasks for creating Talos VMs'
-  detail: "Generate executor tasks for:\n  - creating CP node VM(s)\n  - creating\
-    \ worker node VM(s)\nOnly produce tasks.\n"
-  target: ai/master_memo.txt
+  - S1-PREFLIGHT-HOST
+  note: Blocked after 1 failures (recovery queued)
+  metadata:
+    blocked_mode: recovery
+  summary: 'PROVISION: ensure Ubuntu Server + k3s VMs exist'
+  detail: Run infrastructure/proxmox/provision_vms.sh to create the control-plane
+    and worker VMs with the Ubuntu cloud image, static IPs, and SSH key configured.
+  target: infrastructure/proxmox/provision_vms.sh
   status: pending
   attempts: 0
   max_attempts: 1
   depends_on:
-  - S1-005-EXECUTOR-PROX-TEST
+  - S1-PROXMOX-INVENTORY
   note: ''
-- id: S1-007-ENGINEER-PROX-SCRIPT
-  stage: 1
-  persona: engineer
-  summary: 'Engineer: implement minimal Proxmox VM creation helpers'
-  detail: "Modify infrastructure/proxmox/cluster_bootstrap.sh or create new helper\
-    \ scripts\nin the same directory to support VM creation tasks defined by Planner.\n\
-    Only minimal valid diffs \u2014 no full automation yet.\n"
-  target: infrastructure/proxmox/
-  status: pending
-  attempts: 0
-  max_attempts: 2
-  depends_on:
-  - S1-006-PLANNER-CREATE-VMS
-  note: ''
-- id: S1-008-EXECUTOR-CREATE-VMS
+- id: S1-RESOLVE-CTRL_IP
   stage: 1
   persona: executor
-  summary: 'Executor: create Talos control-plane + worker VMs'
-  detail: 'Execute the scripts created by the engineer to create the Talos VMs.
-
-    Capture logs; fail fast.
-
-    '
+  summary: 'RESOLVE: load controller IP'
+  detail: Ensure proxmox_inventory.json is present and export controller_ip/node_ips
+    before bootstrapping.
+  target: ai/scripts/resolve_ctrl_ip.sh
+  status: pending
+  attempts: 0
+  max_attempts: 1
+  depends_on:
+  - S1-PROVISION-VMS
+  note: ''
+- id: S1-APPLY-BOOTSTRAP
+  stage: 1
+  persona: executor
+  summary: 'APPLY: bootstrap infrastructure'
+  detail: Run infrastructure/proxmox/cluster_bootstrap.sh to apply the desired state
+    for Stage 1.
   target: infrastructure/proxmox/cluster_bootstrap.sh
   status: pending
   attempts: 0
   max_attempts: 3
   depends_on:
-  - S1-007-ENGINEER-PROX-SCRIPT
+  - S1-RESOLVE-CTRL_IP
   note: ''
-- id: S1-009-PLANNER-FLUX-BOOTSTRAP
+- id: S1-VALIDATE-BOOTSTRAP
+  stage: 1
+  persona: executor
+  summary: 'VALIDATE: verify bootstrap results'
+  detail: Confirm cluster state after apply using infrastructure/proxmox/check_cluster.sh.
+  target: infrastructure/proxmox/check_cluster.sh
+  status: pending
+  attempts: 0
+  max_attempts: 3
+  depends_on:
+  - S1-APPLY-BOOTSTRAP
+  note: ''
+- id: S1-PROXMOX-INVENTORY-PLANNER-RECOVERY
   stage: 1
   persona: planner
-  summary: 'Planner: generate Flux bootstrap tasks'
-  detail: "Generate tasks for:\n  - Preparing flux-install.yaml\n  - Preparing initial\
-    \ Kustomization\n  - Ensuring repo folder structure exists\nOnly define tasks.\n"
-  target: ai/master_memo.txt
-  status: pending
+  summary: Planner recovery for S1-PROXMOX-INVENTORY
+  detail: Executor exhausted retries with classification=ERR_UNKNOWN; planner must
+    read ai/state/last_error.json and synthesize recovery tasks (RECONCILE, DELETE/RESET,
+    APPLY, VALIDATE).
+  target: docs/orchestrator_v7_2.txt
+  attempts: 0
+  max_attempts: 1
+  status: success
+  note: Planner added tasks
+  depends_on:
+  - S1-PROXMOX-INVENTORY
+- id: S1-PROXMOX-INVENTORY-RECONCILE
+  stage: 1
+  persona: executor
+  summary: 'RECONCILE: observe state for S1-PROXMOX-INVENTORY'
+  detail: Read-only discovery to document current state after failure of S1-PROXMOX-INVENTORY
+  target: infrastructure/proxmox/check_cluster.sh
+  status: success
   attempts: 0
   max_attempts: 1
   depends_on:
-  - S1-008-EXECUTOR-CREATE-VMS
-  note: ''
-- id: S1-002-ENGINEER-FIX
-  stage: 1
-  persona: engineer
-  summary: Harden prox-n100 bootstrap script
-  detail: Ensure infrastructure/proxmox/cluster_bootstrap.sh references $HOME/.talos
-    instead of /root/.talos and document the Talos-only bootstrap flow from
-    ai/master_memo_orchestrator.txt.
-  target: infrastructure/proxmox/cluster_bootstrap.sh
-  note: Marker already present
-  depends_on:
-  - S1-001-RUN
-  attempts: 0
-  max_attempts: 2
-  status: success
-- id: S1-003-EXECUTOR-CHECK
+  - S1-PROXMOX-INVENTORY-PLANNER-RECOVERY
+  note: Executor succeeded
+- id: S1-PROXMOX-INVENTORY-DELETE
   stage: 1
   persona: executor
-  summary: Validate prox-n100 controller status
-  detail: Run infrastructure/proxmox/check_cluster.sh after the bootstrap patch so
-    the Talos nodes verify correctly.
-  target: infrastructure/proxmox/check_cluster.sh
-  note: Blocked after 3 failures
+  summary: 'DELETE/RESET: clear partial state for S1-PROXMOX-INVENTORY'
+  detail: Explicit reset to clear partial state before re-apply
+  target: infrastructure/proxmox/wipe_proxmox.sh
+  status: success
+  attempts: 0
+  max_attempts: 1
   depends_on:
-  - S1-002-ENGINEER-FIX
+  - S1-PROXMOX-INVENTORY-RECONCILE
+  note: Executor succeeded
+- id: S1-PROXMOX-INVENTORY-APPLY-RETRY
+  stage: 1
+  persona: executor
+  summary: 'APPLY: rebuild after S1-PROXMOX-INVENTORY'
+  detail: Re-apply desired state from clean baseline
+  target: infrastructure/proxmox/cluster_bootstrap.sh
+  status: blocked
   attempts: 3
   max_attempts: 3
-  status: blocked
-- id: S1-004-EXECUTOR-GITOPS
+  depends_on:
+  - S1-PROXMOX-INVENTORY-DELETE
+  note: 'Blocked: VM provisioning queued (stage S1)'
+  metadata:
+    blocked_mode: recovery
+    classification: ERR_PREREQ_MISSING_VMS
+- id: S1-PROXMOX-INVENTORY-VALIDATE-RETRY
   stage: 1
   persona: executor
-  summary: Run Flux GitOps stage
-  detail: Execute infrastructure/proxmox/cluster_bootstrap.sh gitops stage so Flux
-    controllers install and sync cluster/kubernetes/ per the master memo.
-  target: infrastructure/proxmox/cluster_bootstrap.sh
-  note: Planner queued GitOps staging
-  depends_on:
-  - S1-003-EXECUTOR-CHECK
+  summary: 'VALIDATE: confirm recovery for S1-PROXMOX-INVENTORY'
+  detail: Verify rebuilt state after recovery apply
+  target: infrastructure/proxmox/check_cluster.sh
+  status: pending
   attempts: 0
   max_attempts: 3
-  status: pending
-- id: S1-005-ENGINEER-DOCS
-  stage: 1
-  persona: engineer
-  summary: Document bootstrap expectations
-  detail: Add a note to infrastructure/proxmox/README.md describing the Talos-first
-    workflow from ai/master_memo_orchestrator.txt and how to target the controller.
-  target: infrastructure/proxmox/README.md
-  note: Planner queued documentation update
   depends_on:
-  - S1-004-EXECUTOR-GITOPS
-  attempts: 0
-  max_attempts: 2
-  status: pending
-- id: S1-003-EXECUTOR-ENGINEER-FIX
+  - S1-PROXMOX-INVENTORY-APPLY-RETRY
+- id: S1-PLANNER-DEADLOCK-c8890b81
   stage: 1
-  persona: engineer
-  summary: Fix failure in S1-003-EXECUTOR-CHECK
-  detail: Executor failed with error_class=ERR_UNKNOWN. Engineer must produce minimal
-    diffs only.
-  target: infrastructure/proxmox/check_cluster.sh
+  persona: planner
+  summary: Deadlock recovery for stage 1
+  detail: 'Deadlock detected: S1-APPLY-BOOTSTRAP blocked_by S1-RESOLVE-CTRL_IP; S1-PROVISION-VMS
+    blocked_by S1-PROXMOX-INVENTORY; S1-PROXMOX-INVENTORY-VALIDATE-RETRY blocked_by
+    S1-PROXMOX-INVENTORY-APPLY-RETRY; S1-RESOLVE-CTRL_IP blocked_by S1-PROVISION-VMS;
+    S1-VALIDATE-BOOTSTRAP blocked_by S1-APPLY-BOOTSTRAP. top_blocker=S1-PROVISION-VMS
+    blocked_by S1-PROXMOX-INVENTORY (status=blocked note=Blocked after 1 failures
+    (recovery queued)). signature=c8890b81a47c547082a120b98dda90fa49631ac5ce6b78adf94cb52b869f8ff2'
+  target: docs/orchestrator_v7_2.txt
   attempts: 0
-  max_attempts: 2
+  max_attempts: 1
   status: success
-  note: Appended minimal comment
-  depends_on:
-  - S1-003-EXECUTOR-CHECK
+  note: No additional work needed at this time
+  depends_on: []

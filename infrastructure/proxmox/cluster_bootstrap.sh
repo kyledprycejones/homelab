@@ -1,33 +1,34 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-trap 'echo "[ERROR] ${BASH_SOURCE[0]}:${LINENO}" >&2' ERR
-export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
-
-CURRENT_STAGE="init"
-on_err() {
-  local rc=$?
-  echo "ERROR: Stage ${CURRENT_STAGE:-unknown} failed at line $1 (exit=${rc}). Check the harness log for details."
-  exit "$rc"
-}
-trap 'on_err $LINENO' ERR
+trap 'echo "[ERROR] ${BASH_SOURCE[0]}:$LINENO (stage=${CURRENT_STAGE:-unknown})" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# Optional: preload environment from config/env/<cluster>.env
 CONFIG_ENV="${CONFIG_ENV:-${REPO_ROOT}/config/env/prox-n100.env}"
 if [ -f "${CONFIG_ENV}" ]; then
   # shellcheck disable=SC1090
   source "${CONFIG_ENV}"
 fi
 
-CLUSTER_CONFIG_FILE="${CLUSTER_CONFIG_FILE:-${REPO_ROOT}/config/clusters/prox-n100.yaml}"
-CLUSTER_CONFIG_CLUSTER_NAME=""
-CLUSTER_CONFIG_CONTROLLER_IP=""
-CLUSTER_CONFIG_WORKERS=()
-CLUSTER_CONFIG_DOMAIN=""
-CLUSTER_CONFIG_NFS_SERVER=""
-CLUSTER_CONFIG_NFS_PATH=""
+log() {
+  printf '[%s] %s\n' "$(date '+%F %T%z')" "$*"
+}
+
+say() {
+  log "== $* =="
+}
+
+abort() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    abort "Required command '$1' not found in PATH"
+  fi
+}
 
 yaml_top_value() {
   local key="$1"
@@ -35,7 +36,6 @@ yaml_top_value() {
   python3 - "$key" "$file" <<'PY'
 import re
 import sys
-
 key = sys.argv[1]
 path = sys.argv[2]
 pattern = re.compile(r'^[ \t]*' + re.escape(key) + r'[ \t]*:[ \t]*(.*)$')
@@ -58,30 +58,29 @@ yaml_nested_value() {
   python3 - "$block" "$key" "$file" <<'PY'
 import re
 import sys
-
 block = sys.argv[1]
 key = sys.argv[2]
 path = sys.argv[3]
-block_pattern = re.compile(r'^(?P<indent>[ \t]*)' + re.escape(block) + r'\s*:\s*$')
-key_pattern = re.compile(r'^[ \t]*' + re.escape(key) + r'[ \t]*:[ \t]*(.*)$')
+block_pat = re.compile(r'^(?P<indent>[ \t]*)' + re.escape(block) + r'\s*:\s*$')
+key_pat = re.compile(r'^[ \t]*' + re.escape(key) + r'[ \t]*:[ \t]*(.*)$')
 inside = False
-block_indent = 0
+indent = 0
 try:
     with open(path) as fh:
         for line in fh:
             stripped = line.rstrip('\n')
             if not inside:
-                match = block_pattern.match(stripped)
+                match = block_pat.match(stripped)
                 if match:
                     inside = True
-                    block_indent = len(match.group('indent'))
+                    indent = len(match.group('indent'))
                 continue
             if not stripped.strip():
                 continue
-            indent = len(re.match(r'[ \t]*', stripped).group(0))
-            if indent <= block_indent:
+            current_indent = len(re.match(r'[ \t]*', stripped).group(0))
+            if current_indent <= indent:
                 break
-            match = key_pattern.match(stripped)
+            match = key_pat.match(stripped)
             if match:
                 print(match.group(1).strip())
                 sys.exit(0)
@@ -96,29 +95,28 @@ yaml_list_values() {
   python3 - "$block" "$file" <<'PY'
 import re
 import sys
-
 block = sys.argv[1]
 path = sys.argv[2]
-block_pattern = re.compile(r'^(?P<indent>[ \t]*)' + re.escape(block) + r'\s*:\s*$')
-item_pattern = re.compile(r'^[ \t]*-[ \t]*(.*)$')
+block_pat = re.compile(r'^(?P<indent>[ \t]*)' + re.escape(block) + r'\s*:\s*$')
+item_pat = re.compile(r'^[ \t]*-[ \t]*(.*)$')
 inside = False
-block_indent = 0
+indent = 0
 try:
     with open(path) as fh:
         for line in fh:
             stripped = line.rstrip('\n')
             if not inside:
-                match = block_pattern.match(stripped)
+                match = block_pat.match(stripped)
                 if match:
                     inside = True
-                    block_indent = len(match.group('indent'))
+                    indent = len(match.group('indent'))
                 continue
             if not stripped.strip():
                 continue
-            indent = len(re.match(r'[ \t]*', stripped).group(0))
-            if indent <= block_indent:
+            current_indent = len(re.match(r'[ \t]*', stripped).group(0))
+            if current_indent <= indent:
                 break
-            match = item_pattern.match(stripped)
+            match = item_pat.match(stripped)
             if match:
                 print(match.group(1).strip())
 except FileNotFoundError:
@@ -126,1022 +124,305 @@ except FileNotFoundError:
 PY
 }
 
-load_cluster_config() {
-  local file="$1"
-  [ -f "$file" ] || return 0
-  CLUSTER_CONFIG_CLUSTER_NAME="$(yaml_top_value clusterName "$file")"
-  CLUSTER_CONFIG_CONTROLLER_IP="$(yaml_nested_value controller ip "$file")"
-  CLUSTER_CONFIG_WORKERS=()
-  while IFS= read -r value; do
-    [ -n "$value" ] && CLUSTER_CONFIG_WORKERS+=("$value")
-  done < <(yaml_list_values workers "$file")
-  CLUSTER_CONFIG_DOMAIN="$(yaml_top_value domain "$file")"
-  CLUSTER_CONFIG_NFS_SERVER="$(yaml_nested_value nfs server "$file")"
-  CLUSTER_CONFIG_NFS_PATH="$(yaml_nested_value nfs path "$file")"
-}
+require_cmd curl
+require_cmd python3
+require_cmd nc
 
-load_cluster_config "$CLUSTER_CONFIG_FILE"
-
-########################################
-# CONFIG
-########################################
-
-# Stage 1 canonical values (see ai/memos/master_memo.txt); allow env overrides first
-TALOS_CLUSTER_NAME="${TALOS_CLUSTER_NAME:-${CLUSTER_CONFIG_CLUSTER_NAME:-prox-n100}}"
-
-# Where to store Talos cluster config + kubeconfig on the host running this script
-# Prefer repo-local config, fall back to $HOME/.talos when the repo root is unwritable.
-if [ -n "${TALOS_CONFIG_DIR:-}" ]; then
-  : # explicit override wins
-elif [ -n "${REPO_ROOT:-}" ] && [ "${REPO_ROOT}" != "/" ] && [ "${REPO_ROOT}" != "/tmp" ] && [ -w "${REPO_ROOT}" ] 2>/dev/null; then
-  TALOS_CONFIG_DIR="${REPO_ROOT}/.talos/${TALOS_CLUSTER_NAME}"
+CLUSTER_CONFIG_FILE="${CLUSTER_CONFIG_FILE:-${REPO_ROOT}/config/clusters/prox-n100.yaml}"
+CLUSTER_NAME="$(yaml_top_value clusterName "${CLUSTER_CONFIG_FILE}" || true)"
+CLUSTER_NAME="${CLUSTER_NAME:-prox-n100}"
+CTRL_IP="${CTRL_IP:-}"
+if [ -n "${CTRL_IP}" ]; then
+  say "Using CTRL_IP override from environment: ${CTRL_IP}"
 else
-  TALOS_CONFIG_DIR="${HOME}/.talos/${TALOS_CLUSTER_NAME}"
+  CTRL_IP="$(yaml_nested_value controller ip "${CLUSTER_CONFIG_FILE}" || true)"
 fi
-TALOS_KUBECONFIG="${TALOS_KUBECONFIG:-${TALOS_CONFIG_DIR}/kubeconfig}"
-export TALOSCONFIG="${TALOS_CONFIG_DIR}/talosconfig"
-
-NODE_IP_FILE="${NODE_IP_FILE:-${TALOS_CONFIG_DIR}/nodes.txt}"
-
-# Control-plane IP resolution: env > cluster config > nodes.txt
-if [ -n "${CTRL_IP:-}" ]; then
-  : # use explicit override
-elif [ -n "${CLUSTER_CONFIG_CONTROLLER_IP:-}" ]; then
-  CTRL_IP="${CLUSTER_CONFIG_CONTROLLER_IP}"
-else
-  CTRL_IP=""
+if [ -z "${CTRL_IP}" ]; then
+  abort "Control plane IP missing; set CTRL_IP or add controller.ip to ${CLUSTER_CONFIG_FILE}"
 fi
 
-# Allow WORKERS env as an override; fall back to per-node env vars or canonical config
-WORKERS_INPUT="${WORKERS:-}"
-WORKERS=()
-if [ -n "${WORKERS_INPUT}" ]; then
-  IFS=' ,:' read -r -a WORKERS <<< "${WORKERS_INPUT}"
-elif [ -n "${WORKER1:-}" ] || [ -n "${WORKER2:-}" ]; then
-  WORKERS=("${WORKER1:-}" "${WORKER2:-}")
-elif [ "${#CLUSTER_CONFIG_WORKERS[@]}" -gt 0 ]; then
-  WORKERS=("${CLUSTER_CONFIG_WORKERS[@]}")
-else
-  WORKERS=()
+CTRL_NAME="${CTRL_NAME:-k3s-cp-1}"
+
+WORKER_IPS=()
+mapfile -t WORKER_IPS < <(yaml_list_values workers "${CLUSTER_CONFIG_FILE}")
+if [ "${#WORKER_IPS[@]}" -eq 0 ]; then
+  abort "Worker IPs missing in ${CLUSTER_CONFIG_FILE}; add a 'workers' list"
 fi
 
-# Drop empty entries so callers can omit unused defaults
-_trimmed_workers=()
-for w in "${WORKERS[@]}"; do
-  [ -n "$w" ] && _trimmed_workers+=("$w")
-done
-WORKERS=("${_trimmed_workers[@]}")
-
-# Try loading node IPs from a local tracking file (first line = control-plane,
-# subsequent lines = workers). Comments (#) and blank lines are ignored.
-NODE_IPS_FROM_FILE=()
-if [ -f "${NODE_IP_FILE}" ]; then
-  while IFS= read -r line || [ -n "$line" ]; do
-    line="${line%%#*}"
-    line="$(printf '%s\n' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-    [ -n "$line" ] && NODE_IPS_FROM_FILE+=("$line")
-  done < "${NODE_IP_FILE}"
+WORKER_NAMES_STR="${WORKER_NAMES:-k3s-w-1 k3s-w-2}"
+read -r -a WORKER_NAMES <<< "${WORKER_NAMES_STR}"
+if [ "${#WORKER_NAMES[@]}" -lt "${#WORKER_IPS[@]}" ]; then
+  say "WARNING: defined ${#WORKER_IPS[@]} worker IPs but only ${#WORKER_NAMES[@]} names; truncating IP list"
+  WORKER_IPS=("${WORKER_IPS[@]:0:${#WORKER_NAMES[@]}}")
+elif [ "${#WORKER_NAMES[@]}" -gt "${#WORKER_IPS[@]}" ]; then
+  WORKER_NAMES=("${WORKER_NAMES[@]:0:${#WORKER_IPS[@]}}")
+fi
+WORKER_COUNT="${#WORKER_IPS[@]}"
+if [ "${WORKER_COUNT}" -eq 0 ]; then
+  abort "No workers configured"
 fi
 
-if [ -z "${CTRL_IP}" ] && [ "${#NODE_IPS_FROM_FILE[@]}" -gt 0 ]; then
-  CTRL_IP="${NODE_IPS_FROM_FILE[0]}"
-fi
-
-if [ "${#WORKERS[@]}" -eq 0 ] && [ "${#NODE_IPS_FROM_FILE[@]}" -gt 1 ]; then
-  WORKERS=("${NODE_IPS_FROM_FILE[@]:1}")
-fi
-
-# Talos cluster settings
-TALOS_ENDPOINTS="${TALOS_ENDPOINTS:-${CTRL_IP:-}}"
-
-if [ -z "${CTRL_IP:-}" ]; then
-  echo "ERROR: Control-plane IP not configured. Set CTRL_IP or populate ${NODE_IP_FILE} with the control-plane IP on the first line." >&2
-  exit 1
-fi
-
-ALL_NODES=("${CTRL_IP}")
-for node in "${WORKERS[@]}"; do
-  [ -n "${node}" ] && ALL_NODES+=("${node}")
-done
-
-# Default install disk for Talos nodes (override if needed)
-TALOS_INSTALL_DISK="${TALOS_INSTALL_DISK:-/dev/sda}"
-
-# Extra flags for talosctl gen config (e.g. --with-secrets)
-TALOS_EXTRA_GENCONFIG_FLAGS="${TALOS_EXTRA_GENCONFIG_FLAGS:---with-secrets}"
-
-# SSH config (override via env: SSH_USER, SSH_PASS, SSH_PORT)
-SSH_USER="${SSH_USER:-kyle}"
-SSH_PASS="${SSH_PASS:-root}"
+SSH_USER="${SSH_USER:-ubuntu}"
 SSH_PORT="${SSH_PORT:-22}"
-
-DOMAIN="${DOMAIN:-${CLUSTER_CONFIG_DOMAIN:-funoffshore.com}}"
-LE_EMAIL="${LE_EMAIL:-}"
-
-# NFS
-NFS_SERVER="${NFS_SERVER:-${CLUSTER_CONFIG_NFS_SERVER:-192.168.1.112}}"
-NFS_PATH="${NFS_PATH:-${CLUSTER_CONFIG_NFS_PATH:-/volume1/fire_share2}}"
-
-# GitOps
-GIT_REPO="${GIT_REPO:-https://github.com/kyledprycejones/homelab}"
-# Use the default repo branch unless overridden
-GIT_BRANCH="${GIT_BRANCH:-main}"
-USE_LOCAL_GIT_SNAPSHOT="${USE_LOCAL_GIT_SNAPSHOT:-1}"
-LOCAL_GIT_SNAPSHOT_PORT="${LOCAL_GIT_SNAPSHOT_PORT:-29418}"
-LOCAL_GIT_SNAPSHOT_DIR="${LOCAL_GIT_SNAPSHOT_DIR:-/opt/git_snapshots}"
-
-# Timeouts
-READY_TIMEOUT_SECS=${READY_TIMEOUT_SECS:-600}
-JOIN_TIMEOUT_SECS=${JOIN_TIMEOUT_SECS:-300}
-
-# Verbosity / Debug
-# -v   : verbose
-# -vv  : very verbose (enable shell xtrace)
-# -vvv : max verbosity (xtrace + SSH debug)
-VERBOSE=0
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -vvv) VERBOSE=3; shift ;;
-    -vv)  VERBOSE=2; shift ;;
-    -v)   VERBOSE=1; shift ;;
-    --verbose)
-      VERBOSE="${2:-1}"; shift 2 ;;
-    --) shift; break ;;
-    -*) break ;;
-    *) break ;;
-  esac
-done
-
-# Preserve legacy DEBUG=1 behavior
-if [ "${DEBUG:-0}" = "1" ]; then VERBOSE=$(( VERBOSE < 2 ? 2 : VERBOSE )); fi
-if [ "$VERBOSE" -ge 2 ]; then set -x; fi
-# SSH log level adjusts with verbosity
-SSH_LOG_LEVEL=ERROR
-if [ "$VERBOSE" -ge 3 ]; then SSH_LOG_LEVEL=DEBUG; elif [ "$VERBOSE" -ge 2 ]; then SSH_LOG_LEVEL=INFO; fi
-
-########################################
-# OPTIONAL SECRETS (env)
-# If unset, Cloudflare-related pieces (DNS01 + tunnel) are skipped
-########################################
-CF_API_TOKEN="${CF_API_TOKEN:-}"
-CF_TUNNEL_TOKEN="${CF_TUNNEL_TOKEN:-}"
-# Optional: Cloudflare Origin CA key (used to issue origin certificates via Cloudflare)
-CF_ORIGIN_CA_KEY="${CF_ORIGIN_CA_KEY:-}"
-
-
-########################################
-# HELPERS
-########################################
-log(){ printf "[%s] %s\n" "$(date "+%Y-%m-%dT%H:%M:%S%z")" "$*"; }
-
-say(){ printf "\n"; log "== $* =="; }
-
-retry(){
-  local retries=${1:-3}
-  local delay=${2:-2}
-  shift 2
-  [ "$#" -gt 0 ] || return 1
-  local attempt=0 rc
-  until "$@"; do
-    rc=$?
-    attempt=$((attempt + 1))
-    if [ "$attempt" -ge "$retries" ]; then
-      return "$rc"
+SSH_KEY_FILE="${SSH_KEY_FILE:-}"
+if [ -z "${SSH_KEY_FILE}" ]; then
+  for cand in "${HOME}/.ssh/id_ed25519" "${HOME}/.ssh/id_rsa"; do
+    if [ -f "$cand" ]; then
+      SSH_KEY_FILE="$cand"
+      break
     fi
-    sleep "$delay"
   done
-  return 0
+fi
+if [ -z "${SSH_KEY_FILE}" ] || [ ! -f "${SSH_KEY_FILE}" ]; then
+  abort "SSH key not found; set SSH_KEY_FILE to a valid private key"
+fi
+
+KUBECONFIG_DIR="${KUBECONFIG_DIR:-${REPO_ROOT}/infrastructure/proxmox/k3s}"
+KUBECONFIG_PATH="${KUBECONFIG_DIR}/kubeconfig"
+K3S_TOKEN_PATH="${KUBECONFIG_DIR}/node-token"
+mkdir -p "${KUBECONFIG_DIR}"
+
+K3S_INSTALL_URL="${K3S_INSTALL_URL:-https://get.k3s.io}"
+K3S_CHANNEL="${K3S_CHANNEL:-stable}"
+K3S_SERVER_ARGS="${K3S_SERVER_ARGS:---node-name ${CTRL_NAME:-k3s-cp-1} --node-ip ${CTRL_IP} --tls-san ${CTRL_IP} --write-kubeconfig-mode 644}"
+K3S_URL="https://${CTRL_IP}:6443"
+READY_TIMEOUT_SECS="${READY_TIMEOUT_SECS:-300}"
+CURRENT_STAGE="init"
+
+ssh_base_opts=(-i "${SSH_KEY_FILE}" -p "${SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+
+build_remote_cmd() {
+  local args=("$@")
+  local cmd
+  cmd=$(printf '%q ' "${args[@]}")
+  printf '%s' "${cmd% }"
 }
 
-apt_install(){
-  if ! command -v apt-get >/dev/null 2>&1; then
-    return 1
-  fi
-  local pkgs=("$@")
-  say "Installing apt packages: ${pkgs[*]}"
-  sudo apt-get update -y
-  sudo apt-get install -y "${pkgs[@]}"
+ssh_run() {
+  local host="$1"
+  shift
+  [ "$#" -gt 0 ] || abort "ssh_run requires a command"
+  local remote_cmd
+  remote_cmd=$(build_remote_cmd "$@")
+  ssh "${ssh_base_opts[@]}" "${SSH_USER}@${host}" "bash -lc '${remote_cmd}'"
 }
 
-curl_install(){
-  if command -v curl >/dev/null 2>&1; then
-    return 0
-  fi
-  if command -v brew >/dev/null 2>&1; then
-    brew install curl || return $?
-    return 0
-  fi
-  apt_install curl || true
-}
-
-stage_start() {
-  local name="$1"
-  CURRENT_STAGE="$name"
-  say "STAGE [$name] START"
-}
-
-stage_end() {
-  local name="$1"
-  say "STAGE [$name] COMPLETE"
-  CURRENT_STAGE="idle"
-}
-
-# Print effective config (masking secrets)
-say_config() {
-  local cf_api_masked cf_tunnel_masked origin_ca_masked pass_masked
-  cf_api_masked="${CF_API_TOKEN:0:4}***${CF_API_TOKEN:+${CF_API_TOKEN: -4}}"
-  cf_tunnel_masked="${CF_TUNNEL_TOKEN:0:4}***${CF_TUNNEL_TOKEN:+${CF_TUNNEL_TOKEN: -4}}"
-  origin_ca_masked="${CF_ORIGIN_CA_KEY:0:6}***${CF_ORIGIN_CA_KEY:+${CF_ORIGIN_CA_KEY: -4}}"
-  pass_masked="${SSH_PASS:+*****}"
-  echo "Config: CTRL_IP=$CTRL_IP SSH_USER=$SSH_USER SSH_PORT=$SSH_PORT PASS=$pass_masked WORKERS=${WORKERS[*]} DOMAIN=$DOMAIN GIT_BRANCH=$GIT_BRANCH"
-  echo "Cloudflare: API=$cf_api_masked TUNNEL=$cf_tunnel_masked ORIGIN_CA=$origin_ca_masked"
-  echo "Storage: NFS=${NFS_SERVER}:${NFS_PATH}"
-  echo "Paths: CLUSTER_CONFIG=${CLUSTER_CONFIG_FILE} TALOS_CONFIG_DIR=${TALOS_CONFIG_DIR} NODE_IP_FILE=${NODE_IP_FILE} (Talos manifests: cluster/talos/)"
-}
-
-install_pkg_if_available() {
-  local pkg="$1"
-  if command -v apt-get >/dev/null 2>&1; then
-    apt_install "$pkg"
-  elif command -v brew >/dev/null 2>&1; then
-    brew install "$pkg" || true
-  else
-    echo "WARN: could not install $pkg automatically (no apt-get or brew found). Install it manually." >&2
-    return 1
-  fi
-}
-
-ensure_host_tools() {
-  if ! command -v sshpass >/dev/null 2>&1 && [ -n "${SSH_PASS:-}" ]; then
-    say "Installing sshpass on host"
-    install_pkg_if_available sshpass || true
-  fi
-  # Ensure curl and jq are available for helper calls (best-effort)
-  if ! command -v curl >/dev/null 2>&1; then
-    say "Installing curl on host"
-    curl_install || true
-  fi
-  if ! command -v jq >/dev/null 2>&1; then
-    install_pkg_if_available jq || true
-  fi
-  # nc for connectivity checks
-  if ! command -v nc >/dev/null 2>&1; then
-    install_pkg_if_available netcat-openbsd || true
-  fi
-
-  ensure_talosctl
-  ensure_local_kubectl
-  ensure_known_hosts
-}
-
-ensure_talosctl() {
-  if command -v talosctl >/dev/null 2>&1; then
-    local existing_path
-    existing_path="$(command -v talosctl)"
-    say "talosctl already installed: ${existing_path}"
-    # Verify the existing binary works; if not, reinstall
-    if ! talosctl version >/dev/null 2>&1; then
-      say "WARNING: Existing talosctl binary appears broken, reinstalling..."
-      rm -f "$existing_path" "/usr/local/bin/talosctl" "${HOME}/.local/bin/talosctl" 2>/dev/null || true
-    else
-      return 0
-    fi
-  fi
-  say "Installing talosctl on host"
-  local os arch url detected_arch
-  os="$(uname | tr '[:upper:]' '[:lower:]')"
-  detected_arch="$(uname -m)"
-  case "$detected_arch" in
-    x86_64|amd64) arch="amd64" ;;
-    arm64|aarch64) arch="arm64" ;;
-    *)
-      say "ERROR: Unsupported architecture: ${detected_arch}"
-      return 1
-      ;;
-  esac
-  say "Detected architecture: ${detected_arch} -> ${arch}"
-  url="https://github.com/siderolabs/talos/releases/latest/download/talosctl-${os}-${arch}"
-  say "Downloading talosctl from ${url}"
-  if ! curl -fsSL "$url" -o /tmp/talosctl; then
-    say "ERROR: Failed to download talosctl from ${url}"
-    return 1
-  fi
-  chmod +x /tmp/talosctl
-  # Test the binary before installing
-  say "Validating downloaded talosctl (non-fatal if validation is inconclusive)"
-  if ! /tmp/talosctl version >/dev/null 2>&1; then
-    say "WARNING: Downloaded talosctl binary did not return a clean version output; continuing anyway."
-  fi
-
-  # Install location depends on OS
-  if [ "$os" = "darwin" ]; then
-    say "Installing talosctl to ~/.local/bin (darwin, no sudo)"
-    mkdir -p "${HOME}/.local/bin"
-    mv /tmp/talosctl "${HOME}/.local/bin/talosctl"
-    export PATH="${HOME}/.local/bin:${PATH}"
-  else
-    if ! sudo mv /tmp/talosctl /usr/local/bin/talosctl 2>/dev/null; then
-      say "WARNING: sudo failed, installing talosctl to ~/.local/bin"
-      mkdir -p "${HOME}/.local/bin"
-      mv /tmp/talosctl "${HOME}/.local/bin/talosctl"
-      export PATH="${HOME}/.local/bin:${PATH}"
-    fi
-  fi
-
-  if ! command -v talosctl >/dev/null 2>&1; then
-    say "ERROR: talosctl installation failed - command not found after install"
-    return 1
-  fi
-  say "talosctl installed successfully: $(command -v talosctl) (version: $(talosctl version --short 2>/dev/null || echo 'unknown'))"
+scp_fetch() {
+  local host="$1"
+  local remote_path="$2"
+  local local_path="$3"
+  scp -q -i "${SSH_KEY_FILE}" -P "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_USER}@${host}:${remote_path}" "${local_path}"
 }
 
 ensure_local_kubectl() {
   if command -v kubectl >/dev/null 2>&1; then
-    return 0
+    return
   fi
-  say "Installing kubectl on host (best effort)"
-  if command -v brew >/dev/null 2>&1; then
-    brew install kubectl || true
-  elif command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update -y && sudo apt-get install -y kubectl || true
-  fi
-}
-
-ensure_local_helm() {
-  if command -v helm >/dev/null 2>&1; then
-    return 0
-  fi
-  say "Installing helm on host (best effort)"
-  if command -v brew >/dev/null 2>&1; then
-    brew install helm || true
-  elif command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update -y && sudo apt-get install -y helm || true
-  fi
-}
-
-ensure_flux_cli() {
-  if command -v flux >/dev/null 2>&1; then
-    return 0
-  fi
-  say "Installing flux CLI on host (best effort)"
-  curl -s https://fluxcd.io/install.sh | sudo bash || true
-}
-
-setup_local_git_snapshot() {
-  if [ "${USE_LOCAL_GIT_SNAPSHOT}" != "1" ]; then
-    say "Using remote GitOps repo ${GIT_REPO}@${GIT_BRANCH}"
-    return 0
-  fi
-  if ! command -v git >/dev/null 2>&1; then
-    echo "ERROR: git is required to create the local Git snapshot" >&2
-    exit 1
-  fi
-
-  local branch_ref repo_root bundle
-  repo_root="${REPO_ROOT}"
-  branch_ref="${GIT_BRANCH}"
-  if [ -z "$branch_ref" ] || ! git -C "$repo_root" rev-parse --verify "$branch_ref" >/dev/null 2>&1; then
-    branch_ref="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
-  fi
-
-  bundle="$(mktemp /tmp/homelab-git-XXXXXX.bundle)"
-  git -C "$repo_root" bundle create "$bundle" "$branch_ref"
-  scp_to "$bundle" "$CTRL_IP" "/tmp/homelab.bundle"
-  rm -f "$bundle"
-
-  ssh_do "$CTRL_IP" "sudo mkdir -p ${LOCAL_GIT_SNAPSHOT_DIR} && sudo chown -R ${SSH_USER}:${SSH_USER} ${LOCAL_GIT_SNAPSHOT_DIR}"
-  ssh_do "$CTRL_IP" "rm -rf ${LOCAL_GIT_SNAPSHOT_DIR}/homelab.git && git clone --bare /tmp/homelab.bundle ${LOCAL_GIT_SNAPSHOT_DIR}/homelab.git"
-  ssh_do "$CTRL_IP" "pkill -f 'git daemon.*${LOCAL_GIT_SNAPSHOT_DIR}' >/dev/null 2>&1 || true"
-  ssh_do "$CTRL_IP" "nohup bash -c 'cd ${LOCAL_GIT_SNAPSHOT_DIR} && git daemon --reuseaddr --base-path=${LOCAL_GIT_SNAPSHOT_DIR} --export-all --port=${LOCAL_GIT_SNAPSHOT_PORT} ${LOCAL_GIT_SNAPSHOT_DIR} >${LOCAL_GIT_SNAPSHOT_DIR}/git-daemon.log 2>&1' >/dev/null 2>&1 &"
-
-  GIT_REPO="git://${CTRL_IP}:${LOCAL_GIT_SNAPSHOT_PORT}/homelab.git"
-  GIT_BRANCH="$branch_ref"
-  say "Serving local Git snapshot at ${GIT_REPO} (branch ${GIT_BRANCH})"
-}
-
-# Preload SSH known_hosts for controller and workers to avoid repeated warnings
-ensure_known_hosts() {
-  # Prefer $HOME/.ssh, but fall back to a writable temp path if needed
-  local home_dir="${HOME:-/root}"
-  local kh
-  if ! mkdir -p "$home_dir/.ssh" 2>/dev/null; then
-    home_dir="/tmp/homelab_ssh"
-    mkdir -p "$home_dir/.ssh"
-  fi
-  chmod 700 "$home_dir/.ssh" || true
-  kh="$home_dir/.ssh/known_hosts"
-  touch "$kh" 2>/dev/null || { kh="/tmp/homelab_ssh/known_hosts"; mkdir -p /tmp/homelab_ssh; touch "$kh"; }
-  chmod 600 "$kh" || true
-  for ip in "${ALL_NODES[@]}"; do
-    # Add if not present
-    if ! grep -q "^\[$ip\]" "$kh" 2>/dev/null && ! grep -q "^$ip " "$kh" 2>/dev/null; then
-      ssh-keyscan -H "$ip" 2>/dev/null >> "$kh" || true
+  say "Installing kubectl"
+  local os arch version url dest
+  os="$(uname | tr '[:upper:]' '[:lower:]')"
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64) arch=amd64 ;;
+    arm64|aarch64) arch=arm64 ;;
+    *) abort "Unsupported architecture: ${arch}" ;;
+  esac
+  version="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
+  url="https://dl.k8s.io/${version}/bin/${os}/${arch}/kubectl"
+  dest="/usr/local/bin/kubectl"
+  if curl -fsSL "$url" -o /tmp/kubectl-download; then
+    chmod +x /tmp/kubectl-download
+    if sudo mv /tmp/kubectl-download "$dest" >/dev/null 2>&1; then
+      say "kubectl installed to ${dest}"
+    else
+      mkdir -p "${HOME}/.local/bin"
+      mv /tmp/kubectl-download "${HOME}/.local/bin/kubectl"
+      dest="${HOME}/.local/bin/kubectl"
+      say "kubectl installed to ${dest}"
     fi
-  done
-}
-
-render_flux_sync() {
-  local src="$1" dst="$2"
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "ERROR: python3 is required to render ${src}" >&2
-    exit 1
+  else
+    abort "Failed to download kubectl"
   fi
-  GIT_BRANCH="${GIT_BRANCH:-main}" GIT_REPO="${GIT_REPO:-}" python3 - "$src" "$dst" <<'PY'
-import os, sys
-src, dst = sys.argv[1], sys.argv[2]
-repo = os.environ.get("GIT_REPO", "")
-branch = os.environ.get("GIT_BRANCH", "main") or "main"
-with open(src, "r", encoding="utf-8") as f:
-    data = f.read()
-data = data.replace("${GIT_REPO}", repo).replace("${GIT_BRANCH:-main}", branch)
-with open(dst, "w", encoding="utf-8") as f:
-    f.write(data)
-PY
+  export PATH="${HOME}/.local/bin:${PATH}"
 }
 
-ssh_do() {
-  local host="$1"; shift
-  SSHPASS="$SSH_PASS" sshpass -e \
-    ssh -T -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new -o LogLevel=${SSH_LOG_LEVEL:-ERROR} \
-    "${SSH_USER}@${host}" "$@"
-}
-
-scp_to() {
-  local src="$1" host="$2" dst="$3"
-  SSHPASS="$SSH_PASS" sshpass -e \
-    scp -q -P "${SSH_PORT}" -o StrictHostKeyChecking=accept-new -o LogLevel=${SSH_LOG_LEVEL:-ERROR} \
-    "$src" "${SSH_USER}@${host}:${dst}"
-}
-
-wipe_known_hosts() {
-  local home_dir="${HOME:-/root}"
-  local kh="$home_dir/.ssh/known_hosts"
-  [ -f "$kh" ] || return 0
-  for ip in "${ALL_NODES[@]}"; do
-    ssh-keygen -f "$kh" -R "$ip" >/dev/null 2>&1 || true
-    ssh-keygen -f "$kh" -R "[$ip]:${SSH_PORT}" >/dev/null 2>&1 || true
-  done
-}
-
-ensure_prereqs_node() {
+ensure_remote_command() {
   local host="$1"
-  ssh_do "$host" "sudo swapoff -a || true; sudo sed -i '/ swap / s/^/#/' /etc/fstab || true"
-  ssh_do "$host" "command -v ufw >/dev/null 2>&1 && (sudo ufw disable || true) || true"
-  ssh_do "$host" "if ! command -v chronyd >/dev/null 2>&1 && ! command -v chrony >/dev/null 2>&1; then sudo apt-get update -y && sudo apt-get install -y chrony; fi; sudo systemctl enable --now chrony || true"
-  # Ensure NFS client is available for dynamic provisioning
-  ssh_do "$host" "command -v mount.nfs >/dev/null 2>&1 || (sudo apt-get update -y && sudo apt-get install -y nfs-common)"
+  local tool="$2"
+  ssh_run "$host" "if ! command -v ${tool} >/dev/null 2>&1; then sudo apt-get update -y && sudo apt-get install -y ${tool}; fi"
 }
 
-#
-# Run a command locally with kubeconfig set (Talos-managed cluster)
-kctl() {
-  # Pass arbitrary shell fragments through bash -lc so conditionals / pipes work,
-  # with KUBECONFIG pointed at the Talos-generated kubeconfig.
-  if [ "${INFRA_QUIET:-0}" = "1" ] && [[ "$*" != *"<<"* ]]; then
-    KUBECONFIG="${TALOS_KUBECONFIG}" bash -lc "$* 1>/dev/null"
-  else
-    KUBECONFIG="${TALOS_KUBECONFIG}" bash -lc "$*"
-  fi
-}
-
-helmctl() {
-  if [ "${INFRA_QUIET:-0}" = "1" ] && [[ "$*" != *"<<"* ]]; then
-    KUBECONFIG="${TALOS_KUBECONFIG}" bash -lc "$* 1>/dev/null"
-  else
-    KUBECONFIG="${TALOS_KUBECONFIG}" bash -lc "$*"
-  fi
-}
-
-wait_nodes_ready() {
-  local expected_nodes=$((1 + ${#WORKERS[@]}))
+wait_for_port() {
+  local host="$1"
+  local port="$2"
   local deadline=$(( $(date +%s) + READY_TIMEOUT_SECS ))
-
-  say "Waiting for ${expected_nodes} Kubernetes node(s) to become Ready via Talos kubeconfig ${TALOS_KUBECONFIG}"
-
   while true; do
-    if kctl "kubectl get nodes 2>/dev/null | grep -q ' Ready ' && [ \$(kubectl get nodes --no-headers | wc -l) -ge ${expected_nodes} ]"; then
-      kctl "kubectl get nodes -o wide"
+    if nc -z -w 3 "$host" "$port" >/dev/null 2>&1; then
       break
     fi
-
-    if [ "$(date +%s)" -ge "$deadline" ]; then
-      echo "ERROR: Timeout waiting for all nodes to become Ready."
-      kctl "kubectl get nodes -o wide || true; kubectl get pods -A -o wide || true"
-      exit 1
+    if [ $(date +%s) -ge "$deadline" ]; then
+      abort "Timeout waiting for ${host}:${port}"
     fi
+    sleep 3
+  done
+}
 
+fetch_k3s_token() {
+  local token
+  token="$(ssh_run "$CTRL_IP" "sudo cat /var/lib/rancher/k3s/server/node-token")"
+  token="${token//$'\n'/}"
+  if [ -z "$token" ]; then
+    abort "Failed to read k3s node token"
+  fi
+  echo "$token" > "$K3S_TOKEN_PATH"
+  chmod 600 "$K3S_TOKEN_PATH"
+  K3S_TOKEN="$token"
+}
+
+fetch_kubeconfig() {
+  local tmpfile="${KUBECONFIG_PATH}.tmp"
+  scp_fetch "$CTRL_IP" "/etc/rancher/k3s/k3s.yaml" "$tmpfile"
+  python3 - "$CTRL_IP" "$tmpfile" <<'PY'
+import pathlib, sys
+ctrl_ip = sys.argv[1]
+path = pathlib.Path(sys.argv[2])
+data = path.read_text()
+data = data.replace('https://127.0.0.1:6443', f'https://{ctrl_ip}:6443')
+path.write_text(data)
+PY
+  mv "$tmpfile" "$KUBECONFIG_PATH"
+  chmod 600 "$KUBECONFIG_PATH"
+}
+
+run_kubectl() {
+  KUBECONFIG="$KUBECONFIG_PATH" kubectl "$@"
+}
+
+wait_for_nodes_ready() {
+  local expected="$1"
+  local deadline=$(( $(date +%s) + READY_TIMEOUT_SECS ))
+  say "Waiting for ${expected} Kubernetes nodes to become Ready"
+  while true; do
+    local nodes
+    nodes="$(run_kubectl get nodes --no-headers 2>/dev/null || true)"
+    if [ -n "$nodes" ]; then
+      local count
+      count=$(printf '%s
+' "$nodes" | wc -l)
+      if [ "$count" -ge "$expected" ]; then
+        if printf '%s
+' "$nodes" | awk '$2 != "Ready" {exit 1}'; then
+          say "All ${expected} nodes are Ready"
+          run_kubectl get nodes -o wide
+          break
+        fi
+      fi
+    fi
+    if [ $(date +%s) -ge "$deadline" ]; then
+      log "Nodes output:"\n"$nodes"
+      abort "Timed out waiting for nodes to become Ready"
+    fi
     sleep 5
   done
 }
 
-# Basic reachability and auth checks before doing expensive work
-check_connectivity() {
-  say "Checking Talos endpoints for TCP reachability"
-  for h in "${ALL_NODES[@]}"; do
-    printf -- "- %s:%s: " "$h" "$SSH_PORT"
-    if command -v nc >/dev/null 2>&1; then
-      if nc -z -w 4 "$h" "$SSH_PORT" >/dev/null 2>&1; then
-        echo "tcp open"
-      else
-        echo "tcp closed (Talos may still be booting)"
-      fi
-    else
-      echo "nc missing; skipping port check"
-    fi
-  done
-}
-
-wait_for_talos_api() {
-  local nodes=("$@")
-  local deadline=$(( $(date +%s) + READY_TIMEOUT_SECS ))
-
-  say "Waiting for Talos API availability on: ${nodes[*]}"
-  for n in "${nodes[@]}"; do
-    while true; do
-      if talosctl --nodes "${n}" --endpoints "${n}" --insecure version >/dev/null 2>&1; then
-        break
-      fi
-      if [ "$(date +%s)" -ge "$deadline" ]; then
-        echo "ERROR: Talos API not reachable on ${n} before timeout (${READY_TIMEOUT_SECS}s)." >&2
-        return 1
-      fi
-      sleep 5
-    done
-  done
-}
-
-# DNS preflight — verify host can resolve external names
-dns_preflight_host() {
-  say "DNS preflight: validating external name resolution on control-plane host"
-  # Try multiple tools on the host to resolve a well-known domain
-  if ! ssh_do "$CTRL_IP" "getent hosts onedr0p.github.io >/dev/null 2>&1 || resolvectl query onedr0p.github.io >/dev/null 2>&1 || nslookup onedr0p.github.io >/dev/null 2>&1"; then
-    echo "ERROR: Control-plane host cannot resolve external domains (e.g., onedr0p.github.io)." >&2
-    echo "Fix the host's DNS (systemd-resolved or netplan). Example for systemd-resolved:" >&2
-    echo "  sudo mkdir -p /etc/systemd/resolved.conf.d" >&2
-    echo "  printf '[Resolve]\nDNS=1.1.1.1 1.0.0.1 8.8.8.8\nDomains=~.\n' | sudo tee /etc/systemd/resolved.conf.d/10-public.conf" >&2
-    echo "  sudo systemctl restart systemd-resolved && resolvectl query onedr0p.github.io" >&2
-    exit 1
+install_k3s_server() {
+  if ssh_run "$CTRL_IP" "sudo test -f /etc/rancher/k3s/k3s.yaml" >/dev/null 2>&1; then
+    say "k3s server already installed on ${CTRL_IP}"
+    return
   fi
+  say "Installing k3s server on ${CTRL_IP}"
+  ssh_run "$CTRL_IP" "curl -sfL ${K3S_INSTALL_URL} | INSTALL_K3S_CHANNEL=${K3S_CHANNEL} INSTALL_K3S_EXEC='server ${K3S_SERVER_ARGS}' sudo sh -"
+  ssh_run "$CTRL_IP" "sudo systemctl enable --now k3s"
+  wait_for_port "$CTRL_IP" 6443
 }
 
-# Summarize cluster state for quick debugging
-diagnose_cluster() {
-  ensure_cluster_ready
-  say "Cluster info"
-  kctl "kubectl version --short || true"
-  kctl "kubectl cluster-info || true"
-  kctl "kubectl get nodes -o wide || true"
-  say "Core components"
-  kctl "kubectl -n kube-system get pods -o wide || true"
-  say "Flux controllers (flux-system) pods"
-  kctl "kubectl -n flux-system get pods -o wide || true"
-  say "Vault pods"
-  kctl "kubectl -n vault get pods -o wide || true"
-  say "Storage classes"
-  kctl "kubectl get sc || true"
-  say "PVCs"
-  kctl "kubectl get pvc -A || true"
-  say "Services"
-  kctl "kubectl get svc -A | sed -n '1,120p' || true"
-  say "Pending/Failed pods detail"
-  kctl "kubectl get pods -A --field-selector=status.phase!=Running -o wide || true"
-  say "Recent events"
-  kctl "kubectl get events -A --sort-by=.lastTimestamp | tail -n 200 || true"
-}
-
-########################################
-# SUB-STAGE HELPERS
-########################################
-cf_api() {
-  local method="$1" path="$2" body="${3:-}"
-  if [ -z "${CF_API_TOKEN:-}" ]; then echo "WARN: CF_API_TOKEN not set"; return 1; fi
-  if [ -n "$body" ]; then
-    curl -fsS -X "$method" "https://api.cloudflare.com/client/v4${path}" \
-      -H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json" \
-      --data "$body"
-  else
-    curl -fsS -X "$method" "https://api.cloudflare.com/client/v4${path}" \
-      -H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json"
-  fi
-}
-
-cf_get_zone_id() {
-  # Uses jq if available; falls back to sed
-  local zone_json
-  zone_json=$(cf_api GET "/zones?name=${DOMAIN}&per_page=1" || true)
-  if command -v jq >/dev/null 2>&1; then
-    echo "$zone_json" | jq -r '.result[0].id // empty'
-  else
-    echo "$zone_json" | sed -n 's/.*"result":\[\{"id":"\([a-f0-9]\{32\}\)".*/\1/p'
-  fi
-}
-
-cf_create_firewall_bypass() {
-  # Bypass WAF/BIC/Hot for a specific hostname using Firewall Rules API
-  local host="$1" zid="$2"
-  [ -z "$zid" ] && return 1
-  local payload
-  payload=$(cat <<JSON
-[
-  {
-    "action": "bypass",
-    "filter": {"expression": "(http.host eq \"${host}\")"},
-    "products": ["waf","bic","hot"],
-    "description": "Bypass challenge for ${host}"
-  }
-]
-JSON
-)
-  cf_api POST "/zones/${zid}/firewall/rules" "$payload" >/dev/null 2>&1 || true
-}
-
-cf_create_pagerule_security_off() {
-  # Set Security Level to Essentially Off for a hostname path via Page Rules API (best-effort)
-  local host="$1" zid="$2"
-  [ -z "$zid" ] && return 1
-  local payload
-  payload=$(cat <<JSON
-{
-  "targets": [
-    {"target": "url", "constraint": {"operator": "matches", "value": "${host}/*"}}
-  ],
-  "actions": [
-    {"id": "security_level", "value": "essentially_off"}
-  ],
-  "status": "active",
-  "priority": 1
-}
-JSON
-)
-  cf_api POST "/zones/${zid}/pagerules" "$payload" >/dev/null 2>&1 || true
-}
-
-cf_configure_challenge_bypass() {
+install_k3s_agent() {
   local host="$1"
-  if [ -z "${CF_API_TOKEN:-}" ]; then
-    echo "WARN: CF_API_TOKEN not set; cannot configure Cloudflare challenge bypass for ${host}."; return 0
+  local name="$2"
+  if ssh_run "$host" "sudo test -f /etc/rancher/k3s/k3s-agent.yaml" >/dev/null 2>&1; then
+    say "k3s agent already present on ${host}"
+    return
   fi
-  say "Configuring Cloudflare challenge bypass for ${host}"
-  local zid
-  zid=$(cf_get_zone_id)
-  if [ -z "$zid" ]; then echo "WARN: Could not resolve Cloudflare Zone ID for ${DOMAIN}"; return 0; fi
-  # Try firewall bypass and page rule to minimize interactive challenges
-  cf_create_firewall_bypass "$host" "$zid"
-  cf_create_pagerule_security_off "$host" "$zid"
-}
-ensure_cluster_ready() {
-  if [ ! -f "${TALOS_KUBECONFIG}" ]; then
-    echo "ERROR: Talos kubeconfig missing at ${TALOS_KUBECONFIG}. Run '$0 talos' first."
-    exit 1
-  fi
-  if ! KUBECONFIG="${TALOS_KUBECONFIG}" kubectl get nodes --request-timeout=10s >/dev/null 2>&1; then
-    echo "ERROR: Kubernetes API not reachable using ${TALOS_KUBECONFIG}. Check Talos cluster health."
-    exit 1
-  fi
+  say "Joining ${host} as ${name}"
+  ssh_run "$host" "curl -sfL ${K3S_INSTALL_URL} | INSTALL_K3S_CHANNEL=${K3S_CHANNEL} K3S_URL=${K3S_URL} K3S_TOKEN=${K3S_TOKEN} INSTALL_K3S_EXEC='agent --node-name ${name} --node-ip ${host}' sudo sh -"
+  ssh_run "$host" "sudo systemctl enable --now k3s-agent"
 }
 
-ensure_ns() {
-  local ns="$1"
-  kctl "kubectl get ns ${ns} >/dev/null 2>&1 || kubectl create ns ${ns}"
-}
-
-########################################
-# 1) CONTROL PLANE (Talos)
-########################################
-bootstrap_control_plane() {
-  say "Bootstrapping Talos control-plane at ${CTRL_IP} with workers: ${WORKERS[*]:-<none>}"
-
-  mkdir -p "${TALOS_CONFIG_DIR}"
-
-  local cluster_name="${TALOS_CLUSTER_NAME}"
-  local endpoints="${TALOS_ENDPOINTS}"
-
-  say "Generating Talos machine configs (cluster=${cluster_name}, endpoint=https://${CTRL_IP}:6443)"
-  if ! command -v talosctl >/dev/null 2>&1; then
-    say "ERROR: talosctl not found in PATH. Run ensure_talosctl() first."
-    return 1
-  fi
-  if ! talosctl gen config "${cluster_name}" "https://${CTRL_IP}:6443" \
-    --output-dir "${TALOS_CONFIG_DIR}" \
-    --force \
-    --install-disk "${TALOS_INSTALL_DISK}" \
-    ${TALOS_EXTRA_GENCONFIG_FLAGS} 2>&1; then
-    say "ERROR: talosctl gen config failed. Check output above."
-    return 1
-  fi
-
-  if ! wait_for_talos_api "${CTRL_IP}"; then
-    return 1
-  fi
-
-  say "Applying control-plane config to ${CTRL_IP}"
-  if ! retry 10 10 talosctl apply-config \
-    --insecure \
-    --nodes "${CTRL_IP}" \
-    --file "${TALOS_CONFIG_DIR}/controlplane.yaml"; then
-    say "ERROR: Failed to apply control-plane config to ${CTRL_IP} after retries."
-    return 1
-  fi
-
-  if [ "${#WORKERS[@]}" -gt 0 ]; then
-    say "Applying worker config to ${WORKERS[*]}"
-    for w in "${WORKERS[@]}"; do
-      if ! retry 10 10 talosctl apply-config \
-        --insecure \
-        --nodes "${w}" \
-        --file "${TALOS_CONFIG_DIR}/worker.yaml"; then
-        say "ERROR: Failed to apply worker config to ${w} after retries."
-        return 1
+stage_preflight() {
+  CURRENT_STAGE="preflight"
+  say "Preflight checks"
+  ensure_local_kubectl
+  if command -v nc >/dev/null 2>&1; then
+    for host in "$CTRL_IP" "${WORKER_IPS[@]}"; do
+      if nc -z -w 3 "$host" "$SSH_PORT" >/dev/null 2>&1; then
+        log "SSH port reachable on ${host}:${SSH_PORT}"
+      else
+        log "SSH port ${SSH_PORT} not reachable on ${host} (VM may still boot)"
       fi
     done
+  else
+    log "nc not installed locally; skipping TCP preflight"
   fi
-
-  say "Bootstrapping Talos cluster (etcd + control-plane) via ${CTRL_IP}"
-  talosctl bootstrap \
-    --nodes "${CTRL_IP}" \
-    --endpoints "${endpoints}"
-
-  say "Fetching kubeconfig from Talos into ${TALOS_KUBECONFIG}"
-  talosctl kubeconfig \
-    --nodes "${CTRL_IP}" \
-    --endpoints "${endpoints}" \
-    "${TALOS_KUBECONFIG}"
+  say "Preflight complete"
 }
 
-########################################
-# 2) WORKERS (Talos)
-########################################
-join_workers() {
-  if [ "${#WORKERS[@]}" -eq 0 ]; then
-    say "No workers defined; skipping worker join."
-    return 0
-  fi
-
-  # For Talos, worker node configuration is already applied in bootstrap_control_plane()
-  # via 'talosctl apply-config' with the worker.yaml. This function remains as a semantic
-  # placeholder and for future extensions if needed.
-  say "Talos worker configs have been applied for: ${WORKERS[*]}"
-}
-
-########################################
-# 3) INFRA (minimal: NFS + basics)
-########################################
-install_infra() {
-  INFRA_QUIET=1
-  if [ "${VERBOSE:-0}" -ge 2 ]; then INFRA_QUIET=0; fi
-
-  say "Checking cluster readiness"
-  ensure_cluster_ready
-
-  say "Ensuring local kubectl and helm"
-  ensure_local_kubectl
-  ensure_local_helm
-
-  say "Adding Helm repos"
-  helmctl "helm repo add nfs-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/ || true"
-  helmctl "helm repo update"
-
-  say "Creating namespaces"
-  ensure_ns nfs-provisioner
-
-  say "Installing NFS dynamic provisioner"
-  helmctl "helm upgrade --install nfs-subdir-external-provisioner nfs-provisioner/nfs-subdir-external-provisioner \
-    -n nfs-provisioner \
-    --set nfs.server='${NFS_SERVER}' \
-    --set nfs.path='${NFS_PATH}' \
-    --set storageClass.name='nfs-storage' \
-    --set storageClass.mountOptions[0]=nfsvers=3 \
-    --set storageClass.defaultClass=true"
-
-  say "Marking nfs-storage as default StorageClass"
-  while ! kctl "kubectl get sc nfs-storage >/dev/null 2>&1"; do sleep 2; done
-  kctl "kubectl patch storageclass nfs-storage -p '{\"metadata\": {\"annotations\": {\"storageclass.kubernetes.io/is-default-class\": \"true\"}}}' --type=merge"
-
-  say "Validating NFS dynamic provisioning"
-  kctl "cat <<'EOF' | kubectl apply --validate=false -f -
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nfs-provisioning-check
-  namespace: nfs-provisioner
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: nfs-storage
-  resources:
-    requests:
-      storage: 1Mi
-EOF
-"
-  local check_deadline phase
-  check_deadline=$(( $(date +%s) + 120 ))
-  while true; do
-    phase="$(KUBECONFIG="${TALOS_KUBECONFIG}" kubectl -n nfs-provisioner get pvc nfs-provisioning-check -o jsonpath='{.status.phase}' 2>/dev/null || true)"
-    [ "$phase" = "Bound" ] && break
-    if [ "$(date +%s)" -ge "$check_deadline" ]; then
-      echo "ERROR: NFS dynamic provisioning did not bind a test PVC within 2 minutes."
-      kctl "kubectl -n nfs-provisioner describe pvc nfs-provisioning-check || true"
-      kctl "kubectl -n nfs-provisioner get pods -o wide || true"
-      kctl "kubectl -n nfs-provisioner logs deploy/nfs-subdir-external-provisioner --tail=200 || true"
-      echo "Hint: Verify NAS export permissions for ${NFS_SERVER}:${NFS_PATH} and that nodes can 'mount -t nfs' it."
-      exit 1
-    fi
-    sleep 3
+stage_k3s() {
+  CURRENT_STAGE="k3s"
+  say "Bootstrapping k3s"
+  log "Swap remains enabled on all nodes per policy"
+  ensure_remote_command "$CTRL_IP" curl
+  for host in "${WORKER_IPS[@]}"; do
+    ensure_remote_command "$host" curl
   done
-  kctl "kubectl -n nfs-provisioner delete pvc nfs-provisioning-check --ignore-not-found=true"
-
-  INFRA_QUIET=0
-  say "Skipping Vault, monitoring, logging, and cloudflared installation. These will be managed via GitOps (Flux) from cluster/kubernetes/."
-  return 0
-}
-
-########################################
-# 4) APPS (GitOps-managed placeholder)
-########################################
-install_apps() {
-  say "Skipping direct app installation; managed via GitOps (Flux) under cluster/kubernetes/apps."
-}
-
-stage_gitops() {
-  ensure_cluster_ready
-  say "Installing Flux GitOps toolkit"
-  setup_local_git_snapshot
-  ensure_flux_cli
-
-  # Ensure namespace
-  ensure_ns flux-system
-
-  # Apply Flux controllers locally against the Talos-managed cluster
-  say "Installing Flux controllers into flux-system"
-  KUBECONFIG="${TALOS_KUBECONFIG}" flux install --namespace=flux-system --network-policy=false || true
-
-  local flux_dir rendered_sync
-  flux_dir="${REPO_ROOT}/cluster/kubernetes/flux"
-  rendered_sync="$(mktemp)"
-  render_flux_sync "${flux_dir}/gotk-sync.yaml" "${rendered_sync}"
-
-  kctl "kubectl apply -f '${flux_dir}/gotk-components.yaml'"
-  kctl "kubectl apply -f '${rendered_sync}'"
-  kctl "kubectl apply -f '${flux_dir}/apps.yaml'"
-
-  rm -f "${rendered_sync}"
-
-  say "Flux installed and configured to sync ./cluster/kubernetes from ${GIT_REPO}@${GIT_BRANCH}"
+  install_k3s_server
+  fetch_k3s_token
+  say "Stored k3s node token at ${K3S_TOKEN_PATH}"
+  for idx in "${!WORKER_IPS[@]}"; do
+    install_k3s_agent "${WORKER_IPS[idx]}" "${WORKER_NAMES[idx]}"
+  done
+  fetch_kubeconfig
+  say "Control plane: ${CTRL_NAME} (${CTRL_IP})"
+  for idx in "${!WORKER_IPS[@]}"; do
+    say "Worker ${WORKER_NAMES[idx]} -> ${WORKER_IPS[idx]}"
+  done
+  say "kubeconfig available at ${KUBECONFIG_PATH}"
+  say "k3s bootstrap complete"
 }
 
 stage_postcheck() {
-  set +e
-  ensure_cluster_ready || true
-
-  say "Cluster summary"
-  kctl "kubectl get nodes -o wide" || true
-  kctl "kubectl get pods -A | sed -n '1,120p'" || true
-
-  say "Flux GitOps objects"
-  kctl "kubectl get gitrepositories.source.toolkit.fluxcd.io -A" || true
-  kctl "kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A" || true
-
-  local nodes_ok=0 flux_ok=0 tunnel_ok=0
-  if kctl "kubectl get nodes --no-headers 2>/dev/null | grep -q ' Ready '" >/dev/null 2>&1; then
-    nodes_ok=1
+  CURRENT_STAGE="postcheck"
+  say "Verifying cluster health"
+  ensure_local_kubectl
+  if [ ! -f "${KUBECONFIG_PATH}" ]; then
+    abort "Kubeconfig missing at ${KUBECONFIG_PATH}; run the k3s stage first"
   fi
-  if kctl "kubectl -n flux-system get kustomization platform -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True" >/dev/null 2>&1; then
-    flux_ok=1
-  elif kctl "kubectl -n flux-system get kustomization apps -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True" >/dev/null 2>&1; then
-    flux_ok=1
-  fi
-  if kctl "kubectl -n cloudflared get pods 2>/dev/null | grep -q Running" >/dev/null 2>&1; then
-    tunnel_ok=1
-  fi
-
-  echo "POSTCHECK_NODES_OK=${nodes_ok}"
-  echo "POSTCHECK_FLUX_OK=${flux_ok}"
-  echo "POSTCHECK_TUNNEL_OK=${tunnel_ok}"
-  set -e
+  wait_for_nodes_ready $((1 + WORKER_COUNT))
+  run_kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide
+  run_kubectl -n kube-system get pods -l k8s-app=coredns -o wide
+  run_kubectl -n kube-system get pods -o wide | head -n 20
+  run_kubectl get nodes -o wide
+  say "Cluster verification complete"
 }
 
-########################################
-# STAGE WRAPPERS (for consistent banners)
-########################################
-run_stage_precheck() {
-  stage_start precheck
-  ensure_host_tools
-  say_config
-  check_connectivity
-  stage_end precheck
+usage() {
+  cat <<USAGE
+Usage: $0 [preflight|k3s|postcheck|all]
+Stages:
+  preflight   - validate host tools and SSH connectivity
+  k3s        - install k3s server + agents and fetch kubeconfig
+  postcheck  - verify nodes Ready and core DNS pods
+  all        - run all stages in order (default)
+USAGE
+  exit 1
 }
 
-run_stage_diagnose() {
-  stage_start diagnose
-  ensure_host_tools
-  say_config
-  check_connectivity
-  diagnose_cluster
-  stage_end diagnose
-}
-
-ensure_talos_vms() {
-  local vms_script="${REPO_ROOT}/infrastructure/proxmox/vms.sh"
-  if [ ! -x "${vms_script}" ]; then
-    echo "ERROR: Talos VM helper missing at ${vms_script}" >&2
-    exit 1
-  fi
-  say "Provisioning Talos VMs (control-plane + workers) on Proxmox"
-  WORKERS="${WORKERS[*]}" CTRL_IP="${CTRL_IP}" "${vms_script}"
-}
-
-# The `talos` stage represents the Talos-only bootstrap flow from ai/memos/master_memo_orchestrator.txt.
-run_stage_talos() {
-  stage_start talos
-  ensure_host_tools
-  say_config
-  say "Talos-only bootstrap flow per ai/memos/master_memo_orchestrator.txt (control plane + workers, canonical manifests in cluster/talos/)."
-  wipe_known_hosts
-  # TODO: keep cluster/talos/{talconfig,controlplane,worker}.yaml aligned with the VM names/IPs created here.
-  ensure_talos_vms
-  bootstrap_control_plane
-  join_workers
-  wait_nodes_ready
-  stage_end talos
-}
-
-run_stage_infra() {
-  stage_start infra
-  ensure_host_tools
-  install_infra
-  stage_end infra
-}
-
-run_stage_apps() {
-  stage_start apps
-  ensure_host_tools
-  stage_gitops
-  stage_end apps
-}
-
-run_stage_postcheck() {
-  stage_start postcheck
-  ensure_host_tools
-  stage_postcheck
-  stage_end postcheck
-}
-########################################
-# MAIN — staged execution
-########################################
-# After parsing -v flags, the next argument is the stage
-stage="${1:-all}"
-
-say "Starting stage: $stage"
-
-case "$stage" in
-  precheck)
-    run_stage_precheck
-    ;;
-  preflight)
-    run_stage_precheck
-    ;;
-  diagnose)
-    run_stage_diagnose
-    ;;
-  talos)
-    run_stage_talos
-    ;;
-  cluster)
-    run_stage_talos
-    ;;
-  infra)
-    run_stage_infra
-    ;;
-  apps)
-    run_stage_apps
-    ;;
-  gitops)
-    run_stage_apps
-    ;;
-  postcheck)
-    run_stage_postcheck
-    ;;
-  all)
-    run_stage_precheck
-    run_stage_talos
-    run_stage_infra
-    run_stage_apps
-    run_stage_postcheck
-    ;;
-  *)
-    echo "Usage: $0 [-v|-vv|-vvv|--verbose N] [precheck|preflight|diagnose|talos|cluster|infra|apps|gitops|postcheck|all]  (default: all)"
-    exit 1
-    ;;
+TARGET_STAGE="${1:-all}"
+case "$TARGET_STAGE" in
+  preflight) stage_preflight ;; 
+  k3s) stage_preflight; stage_k3s ;;
+  postcheck) stage_postcheck ;;
+  all) stage_preflight; stage_k3s; stage_postcheck ;;
+  *) usage ;;
 esac
-
-say_lines="Done 🎉 Stage: $stage\n- Control plane: $CTRL_IP\n- Workers: ${WORKERS[*]}\n- GitOps source: ${GIT_REPO}@${GIT_BRANCH}\n- Cluster config: ${CLUSTER_CONFIG_FILE}\n- Talos manifests: cluster/talos/\n- Check Flux with:\n    kubectl get gitrepositories.source.toolkit.fluxcd.io -A\n    kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A\n"
-say "$say_lines"
-
-# PLANNER ENG-20251203T234544Z Fix failure in S1-001-RUN
-# Detail: Executor failed with error_class=${classification}.
-Engineer must produce minimal diffs only.
-# applied at 2025-12-04T00:28:15Z
-
-# PLANNER S1-002-ENGINEER-FIX Harden prox-n100 bootstrap script
-# Detail: Ensure infrastructure/proxmox/cluster_bootstrap.sh references $HOME/.talos instead of /root/.talos and explain the Talos-only bootstrap flow from ai/master_memo_orchestrator.txt.
-# applied at 2025-12-04T00:28:18Z
+yaml_list_values() {

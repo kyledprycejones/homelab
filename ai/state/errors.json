@@ -1,1 +1,50 @@
-{}
+{
+  "converge_3ca0525e17c89328": {
+    "attempts": 0,
+    "api_calls": 0,
+    "last_source": "none",
+    "last_transition": "",
+    "api_outcomes": [],
+    "no_effect_count": 0,
+    "no_new_evidence_count": 0,
+    "patch_failures": 0,
+    "provider_failures": {
+      "ollama_architect": 1,
+      "openrouter_paid": 1,
+      "openrouter_free": 2
+    }
+  },
+  "converge_37fd2460886f2dd6": {
+    "attempts": 0,
+    "api_calls": 0,
+    "last_source": "none",
+    "last_transition": "",
+    "api_outcomes": [],
+    "no_effect_count": 0,
+    "no_new_evidence_count": 0,
+    "patch_failures": 0,
+    "provider_failures": {
+      "": 4,
+      "ollama_architect": 1,
+      "openrouter_paid": 2,
+      "openrouter_free": 2
+    }
+  },
+  "talos_8652977f": {
+    "attempts": 6,
+    "api_calls": 3,
+    "last_source": "stage",
+    "last_transition": "2025-12-22T14:20:12Z",
+    "api_outcomes": [
+      "no_patch",
+      "no_patch",
+      "no_patch"
+    ],
+    "no_effect_count": 0,
+    "no_new_evidence_count": 0,
+    "patch_failures": 0,
+    "provider_failures": {
+      "codex": 1
+    }
+  }
+}

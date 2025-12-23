@@ -15,29 +15,27 @@ Skip everything else unless the backlog item explicitly cites it.
 - Run `scripts/executor/stage1_backlog_sync.py` to refresh Stage 1 backlog items from repo state.
 - Pick the first unchecked backlog item under `Stage 1 – Homelab Bring-Up`. Ignore Stage 2/Biz2/Biz3 items until Stage 1 is explicitly unlocked.
 - Determine mission stage: Stage 1 (homelab) is mandatory until its requirements are proven complete (GitOps manifests present + recent cluster postcheck success and `stage_1_complete` true). Refuse Biz2/Biz3 tasks until the Planner confirms the unlock.
-- Determine mode + `allowed_paths` (Executor must stay inside; Engineer prefers them but may expand when needed and note it in the summary):
+- Determine mode + `allowed_paths` (Executor must stay inside; Planner adjusts work via new backlog tasks when scope changes):
 
 | Mode trigger | Allowed paths |
 | --- | --- |
 | Task mentions `ui` or `logs` | `ui/**`, `logs/**`, `ai/state/*.json`, `ai/backlog.yaml` |
 | Stage 2 Biz2/Biz3 (only after unlock) | `ai/studio/**`, `ai/backlog.yaml`, `ai/state/*.json`, `ui/logs/public/**`, Biz2/Biz3 directories |
-| Stage 1 bootstrap/infrastructure/talos/flux/harness | `infrastructure/proxmox/**`, `cluster/**`, `scripts/ai_harness.sh`, `config/**`, `logs/ai/**`, `ai/backlog.yaml`, sample app manifests |
+| Stage 1 bootstrap/infrastructure/proxmox/k3s/flux/harness | `infrastructure/proxmox/**`, `cluster/**`, `scripts/ai_harness.sh`, `config/**`, `logs/ai/**`, `ai/backlog.yaml`, sample app manifests |
 | Anything else | Only the specific files referenced plus the mandatory state files |
 
-If Executor needs to step outside `allowed_paths`, stop. Engineer may expand scope when necessary; if expansion touches red-line areas (DNS/Cloudflare/PVC/VM/secret/tunnel), stop and seek approval. Never read `ai/studio/**` while Stage 1 is in progress.
+If Executor needs to step outside `allowed_paths`, stop and escalate to the Planner to synthesize a new task. Never read `ai/studio/**` while Stage 1 is in progress.
 
 ## 3. Persona selection
-- **Executor**: localized diagnostics or edits; max 3 attempts.
-- **Engineer**: multi-file edits, scaffolding, automation, or when Executor escalates.
-- **Planner**: backlog/charter/design adjustments. Never runs commands.
-- **Robo-Kyle**: advisory comments only, triggered by Planner.
-- **Narrative**: separate summarizer invoked only when a cinematic recap is requested.
+- **Executor**: runs scripts/diagnostics; max 3 attempts.
+- **Planner**: synthesizes backlog updates and recovery chains. Never runs commands.
+- **Narrative**: optional summarizer when requested.
 
 ## 4. Execution
 - Stay on the chosen backlog item—no mid-run pivots.
 - Use only the tools required for this task (shell, fs, git). No repo-wide `rg` unless the objective is a discovery.
 - Before each command, confirm it touches only `allowed_paths` or approved hosts.
-- Executor stops after three failures and logs the escalation handoff line. Engineer must acknowledge the escalation before acting.
+- Executor stops after three failures and logs the escalation handoff line. Planner receives all escalations via backlog tasks.
 
 ## 5. Logging (stdout)
 Every run prints:

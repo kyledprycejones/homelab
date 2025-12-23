@@ -1,0 +1,7 @@
+# Orchestrator v7.2 (archived)
+
+This doc previously documented an older Stage 1. The active pipeline now
+relies on Ubuntu Server VMs running k3s, so consult `docs/master_memo.txt`,
+`infrastructure/proxmox/README.md`, and the scripts under
+`infrastructure/proxmox/` for any current work. Consider this file a historical
+snapshot only.
