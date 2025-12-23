@@ -1,9 +1,23 @@
 issues:
   - id: doc-architecture
     status: open
-    summary: Outline the canonical Talos + Flux architecture for new contributors.
+    summary: Outline the canonical Ubuntu + k3s + Flux architecture for new contributors.
     owner: planner
   - id: logging-stack
     status: blocked
     summary: Wire Grafana Loki + Promtail into Flux-controlled logging subfolder.
-    owner: engineer
+    owner: planner
+[2025-12-21T22:36:41Z] Codex CLI failed (rc=127). Check logs/executor/codex_20251221-223641.log
+[2025-12-21T22:37:04Z] ORCHESTRATOR: Unexpected exit while stage k3s was running; trap marked it failed
+[2025-12-21T22:37:05Z] Codex CLI failed (rc=127). Check logs/executor/codex_20251221-223705.log
+[2025-12-21T22:37:15Z] Codex CLI failed (rc=127). Check logs/executor/codex_20251221-223715.log
+[2025-12-21T22:37:18Z] Codex CLI failed (rc=127). Check logs/executor/codex_20251221-223718.log
+[2025-12-21T22:38:24Z] Codex CLI failed (rc=127). Check logs/executor/codex_20251221-223824.log
+[2025-12-21T23:13:13Z] Codex CLI failed (rc=2). Check logs/executor/codex_20251221-231313.log
+[2025-12-22T00:10:18Z] SAFE MODE: max_cycles (stage=converge error_key=cycle_50)
+  - id: "ISSUE-20251222T185246Z"
+    timestamp: "2025-12-22T18:52:46Z"
+    persona: planner
+    status: stuck
+    reason: "Backlog empty for stage 1; awaiting planner direction."
+    hint: "Consult docs/master_memo.txt, ai/issues.yaml, and failing logs."

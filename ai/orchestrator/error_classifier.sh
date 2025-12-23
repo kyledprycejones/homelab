@@ -11,7 +11,7 @@ classify_error(){
   if [[ "$lower" == *"command not found"* ]]; then ERROR_TYPE="command_not_found"; return; fi
   if [[ "$lower" == *"timeout"* || "$lower" == *"network"* || "$lower" == *"connection"* ]]; then ERROR_TYPE="network_error"; return; fi
   if [[ "$lower" == *"yaml"* || "$lower" == *"kustomize"* ]]; then ERROR_TYPE="yaml_parse_error"; return; fi
-  if [[ "$lower" == *"talos"* ]]; then ERROR_TYPE="talos_error"; return; fi
+  if [[ "$lower" == *"k3s"* ]]; then ERROR_TYPE="k3s_error"; return; fi
   if [[ "$lower" == *"proxmox"* ]]; then ERROR_TYPE="proxmox_error"; return; fi
   ERROR_TYPE="unknown"
 }

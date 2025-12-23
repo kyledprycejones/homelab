@@ -1,3 +1,25 @@
+# Orchestrator v7 Configuration
+# This is the canonical source of truth for protected files and allowed paths.
+
+# v7 Protected Files: Patches CANNOT modify these files
+# Both bootstrap_loop.sh and drift_engine.py read from this list
+protected_files:
+  - docs/master_memo.txt
+  - docs/master_memo.md
+  - ai/context_map.yaml
+  - ai/bootstrap_loop.sh
+  - ai/drift_engine.py
+  - infrastructure/proxmox/wipe_proxmox.sh
+
+# v7 Allowed Paths: Patches CAN modify files under these directories
+allowed_paths:
+  - ai/
+  - infrastructure/
+  - cluster/
+  - apps/
+  - docs/
+  - config/
+
 # Stage 1 orchestrator persona routing
 personas:
   executor:
@@ -15,31 +37,11 @@ personas:
       - ai/
     forbidden_paths:
       - .git/
-      - .talos/
+      - infrastructure/proxmox/k3s/
       - /etc/
       - /var/
       - config/env/
     max_retries: 3
-
-  engineer:
-    description: "Debugger/fixer; edits infra scripts and complex code."
-    primary_model: engineer_default
-    max_context_tokens: 4096
-    max_output_tokens: 1024
-    allowed_paths:
-      - cluster/
-      - infrastructure/
-      - config/
-      - scripts/
-      - docs/
-      - ai/
-    forbidden_paths:
-      - .git/
-      - /etc/
-      - /var/
-      - config/env/
-    can_edit_infra: true
-    can_edit_orchestrator: true
 
   planner:
     description: "Planner/designer; sets repo contracts and task strategies."
@@ -61,15 +63,8 @@ routing:
 
   escalation_rules:
     - from: executor
-      to: engineer
-      on:
-        failure_count: 3
-        same_error_pattern: true
-      create_backlog_task: true
-      backlog_type: code_fix
-
-    - from: engineer
       to: planner
       on:
-        needs_architecture_change: true
-        or_manual_flag: true
+        failure_count: 3
+      create_backlog_task: true
+      backlog_type: recovery_plan

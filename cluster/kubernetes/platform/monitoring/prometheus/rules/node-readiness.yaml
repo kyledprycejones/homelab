@@ -1,11 +1,11 @@
 groups:
-  - name: talos-node.rules
+  - name: k3s-node.rules
     rules:
-      - alert: TalosNodeDown
+      - alert: k3sNodeDown
         expr: kube_node_status_condition{condition="Ready",status="false"} > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Talos node {{ $labels.node }} is not Ready"
-          description: "Talos reports {{ $labels.node }} as not Ready for over 5 minutes."
+          summary: "k3s node {{ $labels.node }} is not Ready"
+          description: "k3s reports {{ $labels.node }} as not Ready for over 5 minutes."

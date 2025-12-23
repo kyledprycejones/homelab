@@ -1,0 +1,6 @@
+# Orchestrator v4 (archived)
+
+This document covered the previous bootstrap sequence. The repository now
+operates with Ubuntu Server VMs and k3s; see `docs/master_memo.txt`,
+`infrastructure/proxmox/README.md`, and `infrastructure/proxmox/cluster_bootstrap.sh`
+for the current flow. Keep this file as an archive and do not modify it further.

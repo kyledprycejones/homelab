@@ -2,10 +2,22 @@
 config/env/
 !config/env/.env.example
 *.env
+config/secrets/
+!config/secrets/.gitkeep
 
-# Logs / artifacts
+# Logs / artifacts (all transient)
 logs/
 *.log
+ai/logs/
+ai/escalations/
+
+# AI runtime state (recreated by orchestrator)
+ai/state/*.json
+ai/state/*.yaml
+ai/state/*.log
+ai/state/CURRENT_TASK_FILE
+ai/state/human_approvals.log.md
+ai/patches/
 
 .talos/
 *.agekey
@@ -14,6 +26,11 @@ age.key
 # OS cruft
 .DS_Store
 ._*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
 
 # UI log viewer outputs
 ui/logs/public/log_index.json

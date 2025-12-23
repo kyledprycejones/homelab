@@ -1,0 +1,137 @@
+{
+  "version": "7.0",
+  "providers": {
+    "codex": {
+      "role": "executor",
+      "command": "codex",
+      "timeout": 120,
+      "availability_weight": 1.0,
+      "capability_score": 1.0,
+      "cost_weight": 0.1,
+      "latency_ms": 50
+    },
+    "ollama_executor": {
+      "role": "executor",
+      "provider": "ollama",
+      "model": "qwen-2.5:7b-coder",
+      "endpoint": "http://localhost:11434",
+      "timeout": 120,
+      "availability_weight": 0.9,
+      "capability_score": 0.8,
+      "cost_weight": 0.0,
+      "latency_ms": 80
+    },
+    "ollama_architect": {
+      "role": "architect",
+      "provider": "ollama",
+      "model": "qwen2.5:7b-instruct",
+      "endpoint": "http://localhost:11434",
+      "timeout": 180,
+      "availability_weight": 0.95,
+      "capability_score": 0.85,
+      "cost_weight": 0.0,
+      "latency_ms": 100
+    },
+    "ollama_architect_fallback": {
+      "role": "architect",
+      "provider": "ollama",
+      "model": "qwen-2.5:7b-coder",
+      "endpoint": "http://localhost:11434",
+      "timeout": 180,
+      "availability_weight": 0.85,
+      "capability_score": 0.7,
+      "cost_weight": 0.0,
+      "latency_ms": 120
+    }
+  },
+  "provider_tiers": {
+    "openrouter_free": {
+      "provider": "openrouter",
+      "role": "architect",
+      "timeout": 20,
+      "capacity": "free",
+      "availability_weight": 0.6,
+      "capability_score": 0.5,
+      "cost_weight": 0.1,
+      "latency_ms": 150,
+      "fail_fast": true,
+      "consumes_attempt_on_success_only": true
+    },
+    "openrouter_paid": {
+      "provider": "openrouter",
+      "role": "architect",
+      "timeout": 60,
+      "capacity": "paid",
+      "availability_weight": 1.0,
+      "capability_score": 1.0,
+      "cost_weight": 0.5,
+      "latency_ms": 250,
+      "preferred_models": [
+        "openai/gpt-4o-mini",
+        "openai/gpt-4-turbo"
+      ],
+      "consumes_attempt_on_success_only": true
+    }
+  },
+  "roles": {
+    "executor": {
+      "description": "Applies patches, runs commands, validates outcomes",
+      "priority": [
+        "codex",
+        "ollama_executor"
+      ],
+      "fallback_mode": "safe_mode",
+      "notes": "Executor applies ALL patches via safety rails. Never authors solutions at attempt >= 3."
+    },
+    "architect": {
+      "description": "Analyzes failures, proposes patch plans (never applies directly)",
+      "priority": [
+        "ollama_architect",
+        "ollama_architect_fallback",
+        "openrouter_free",
+        "openrouter_paid"
+      ],
+      "fallback_mode": "diagnostic_only",
+      "notes": "Local architect (qwen2.5:7b-instruct) is preferred, with qwen-2.5:7b-coder as local fallback. Remote providers are only escalation escape hatches."
+    }
+  },
+  "sticky_routes": {
+    "enabled": true,
+    "max_age_seconds": 900,
+    "scope": "claim_or_episode"
+  },
+  "circuit_breaker": {
+    "failure_threshold": 3,
+    "cooldown_seconds": 60
+  },
+  "safe_mode": {
+    "max_cycles_no_new_evidence": 5,
+    "max_duration_minutes": 30,
+    "patch_failure_threshold": 3,
+    "no_effect_threshold": 2
+  },
+  "attempt_policy": {
+    "executor_retry_threshold": 3,
+    "api_call_budget": 3,
+    "notes": {
+      "attempt_1": "Executor only (Codex → ollama_executor)",
+      "attempt_2": "Executor + diagnostics",
+      "attempt_3": "Architect escalation (ollama_architect → ollama_architect_fallback → openrouter_free → openrouter_paid)",
+      "attempt_4_plus": "Claim marked BLOCKED"
+    }
+  },
+  "provider_failover": {
+    "notes": "Provider failures are failover events and do NOT burn attempts. Only successful escalations consume attempts."
+  },
+  "openrouter": {
+    "api_url": "https://openrouter.ai/api/v1/chat/completions",
+    "models_url": "https://openrouter.ai/api/v1/models",
+    "health_timeout": 5
+  },
+  "ollama": {
+    "api_url": "http://localhost:11434",
+    "health_timeout": 5,
+    "executor_model": "qwen-2.5:7b-coder",
+    "architect_model": "qwen2.5:7b-instruct"
+  }
+}

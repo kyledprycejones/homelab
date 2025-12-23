@@ -1,0 +1,37 @@
+- id: TEST-001
+  status: running
+  type: run
+  persona: executor
+  note: test transition
+- id: TEST-002
+  status: success
+  type: run
+  persona: executor
+  note: test transition
+- id: TEST-003
+  status: failed
+  type: run
+  persona: executor
+  note: test transition
+- id: TEST-004
+  status: blocked
+  type: run
+  persona: executor
+  note: test transition
+- id: TEST-005
+  status: review
+  type: run
+  persona: executor
+  note: test transition
+- id: TEST-006
+  status: pending
+  type: run
+  persona: executor
+- id: TEST-007
+  status: escalated
+  type: run
+  persona: executor
+- id: TEST-008
+  status: completed
+  type: run
+  persona: executor

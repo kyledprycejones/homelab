@@ -1,0 +1,6 @@
+# Orchestrator v7 (archived)
+
+This file covered the final legacy orchestrator. The canonical Stage 1
+story is now Ubuntu + k3s, so read `docs/master_memo.txt` and the Proxmox
+infrastructure README for the working flow. This page remains for historical
+reference only.

@@ -8,7 +8,7 @@ This repository is the canonical source of truth for the Funoffshore homelab and
 - The target architecture
 - The long-term vision for running a portfolio of businesses on top of a single, reproducible control plane
 
-This document is written as a tech brief plus architectural manifesto. It should be readable by humans (Kyle, future collaborators, auditors) and the AI orchestrator (Planner / Engineer / Executor personas) and used as the primary narrative input when generating backlogs, roadmaps, and automation plans.
+This document is written as a tech brief plus architectural manifesto. It should be readable by humans (Kyle, future collaborators, auditors) and the AI orchestrator (Planner / Executor personas) and used as the primary narrative input when generating backlogs, roadmaps, and automation plans.
 
 ---
 
@@ -25,7 +25,7 @@ This document is written as a tech brief plus architectural manifesto. It should
 9. [Stage 4 – Control-Plane-in-a-Box (CPiaB) Horizon](#stage-4--control-plane-in-a-box-cpiab-horizon)
 10. [Business Units (Biz2A / Biz2B / Biz2C)](#business-units-biz2a--biz2b--biz2c)
 11. [Operational Personas (Business Roles)](#operational-personas-business-roles)
-12. [Orchestrator Personas (Planner / Engineer / Executor)](#orchestrator-personas-planner--engineer--executor)
+12. [Orchestrator Personas (Planner / Executor)](#orchestrator-personas-planner--executor)
 13. [High-Level Architecture Sketch](#high-level-architecture-sketch)
 14. [Repository Layout](#repository-layout)
 15. [Branching Rules & Canonical Branch](#branching-rules--canonical-branch)
@@ -62,15 +62,15 @@ The project is organized into stages. Each stage has an unlock condition that pr
 - **Stage 0 – Develop AI orchestrator**  
 	Scope: Using chatgpt and codex, develop a split persona model AI that can be run continuously in codex CLI.
 	
-- **Stage 1 – Homelab Bring-Up**  
-  Scope: Proxmox + Talos-managed Kubernetes + Flux; ingress, tunnel, basic monitoring, storage, sample apps.  
+-- **Stage 1 – Homelab Bring-Up**  
+  Scope: Proxmox + Ubuntu Server (minimal) VMs running k3s + Flux; ingress, tunnel, basic monitoring, storage, sample apps.  
   Status: Active (in progress).  
   Unlock condition: GitOps manifests for all Stage 1 requirements; post-check marks `stage_1_complete`; cluster is reproducible from this repo via the bootstrap script.
 
 - **Stage 2 – AI Studio**  
   Scope: AI Studio workflows, multi-persona engineering surface, repo-editing agents, orchestrator execution.  
   Status: Locked.  
-  Unlock condition: Stage 1 is marked complete and stable; Talos cluster can be brought up reproducibly via `cluster_bootstrap.sh` without manual fixes.
+  Unlock condition: Stage 1 is marked complete and stable; k3s cluster can be brought up reproducibly via `cluster_bootstrap.sh k3s` without manual fixes.
 
 - **Stage 3 – Multi-Biz Engine (Biz2 / Biz3)**  
   Scope: Biz incubators, multi-agent experiments, multi-tenant app stacks.  
@@ -95,15 +95,15 @@ The homelab is built in layers:
    - Synology DiskStation providing NFS storage
    - Local MacBook as a Wi‑Fi-connected control node for development and orchestration
 2. **Kubernetes platform layer**
-   - Talos OS managing control plane and worker nodes running on Proxmox VMs
-   - Upstream Kubernetes managed by Talos
+   - Ubuntu Server (minimal) VMs booting k3s control plane + worker nodes on Proxmox
+   - k3s as the lightweight upstream Kubernetes distribution managed by those nodes
    - FluxCD as the GitOps engine
    - Ingress controller (ingress-nginx)
    - Cloudflared tunnel for secure external access
    - Basic monitoring stack using open source tools (Prometheus / Grafana / Loki) in Stage 1
 3. **AI Studio layer (Stage 2)**
    - AI Studio services running in the cluster
-   - Orchestrator flows built with LangGraph / LangChain to model Planner / Engineer / Executor loops
+  - Orchestrator flows built with LangGraph / LangChain to model Planner / Executor loops
    - Telemetry and tracing via an OpenTelemetry-based pipeline in Stage 2 (for AI Studio and workloads)
 4. **Multi-Biz layer (Stage 3)**
    - Biz2/Biz3 namespaces and overlays
@@ -125,8 +125,8 @@ The homelab is built in layers:
 │  └──────┬───────┘    └──────────────┬───────────────┘   │
 │         │                            │                   │
 │   ┌─────▼────────────────────────────▼───────┐           │
-│   │         Talos-Managed Kubernetes         │           │
-│   │  (FluxCD, Traefik, Cloudflared, Apps)   │           │
+│   │        Ubuntu + k3s Kubernetes           │           │
+│   │  (FluxCD, ingress-nginx, Cloudflared, Apps) │           │
 │   └─────┬────────────────────────────────────┘           │
 │         │                                                │
 │   ┌─────▼────────┐     ┌──────────────────────────────┐ │
@@ -152,12 +152,12 @@ Goal: Build a solid, reproducible homelab that everything else rests on.
 
 **Kubernetes and core components**
 
-- Talos: OS and Kubernetes lifecycle manager for control plane and workers; Proxmox VMs boot Talos and are configured via machine configs from this repo
-- Kubernetes: upstream cluster running on Talos nodes
-- FluxCD: reconciles the contents of `cluster/kubernetes/` into the running cluster; ensures Git is the source of truth
-- Ingress controller: ingress-nginx managing HTTP/S traffic into services
-- Cloudflared tunnel: outbound tunnel from homelab to Cloudflare; no direct inbound ports required on the home network
-- Monitoring (Stage 1 scope): basic Prometheus / Grafana / Loki deployment to see node and cluster health and inspect logs
+- Ubuntu Server (minimal) VMs host the k3s control plane and worker nodes; each VM sticks to the static IP layout defined in `config/clusters/prox-n100.yaml`.
+- k3s provides the lightweight upstream Kubernetes control plane and stores its kubeconfig under `infrastructure/proxmox/k3s/kubeconfig`.
+- FluxCD reconciles the contents of `cluster/kubernetes/` into the running cluster so Git remains the source of truth.
+- Ingress controller: ingress-nginx routes HTTP/S traffic into services.
+- Cloudflared tunnel: outbound tunnel from homelab to Cloudflare; no direct inbound ports are required on the home network.
+- Monitoring (Stage 1 scope): Prometheus / Grafana / Loki reveal node and cluster health plus logs.
 - Secrets management (early placeholder): Vault or SOPS-based workflows planned; real secrets never enter this repo
 
 **Storage and networking**
@@ -168,12 +168,12 @@ Goal: Build a solid, reproducible homelab that everything else rests on.
 
 **Stage 1 outcome**
 
-- Talos-managed Kubernetes cluster on Proxmox
+- Ubuntu Server + k3s cluster on Proxmox
 - GitOps convergence via Flux
 - NFS-backed storage
 - At least one sample app available via ingress and Cloudflared
 - Basic metrics and logs visible in Grafana and Loki
-- Reproducible bring-up via `cluster_bootstrap.sh` and GitOps
+- Reproducible bring-up via `cluster_bootstrap.sh k3s` and GitOps
 
 ---
 
@@ -184,12 +184,12 @@ The AI Studio is the internal AI-driven engineering environment that sits on top
 Its purpose is to:
 
 - Turn English instructions into code, manifests, and documentation
-- Manage Planner / Engineer / Executor loops as structured flows
+- Manage Planner / Executor loops as structured flows
 - Provide a UI and logs so humans can inspect and guide the system
 
 Core ideas:
 
-- **Multi-persona orchestrator** – Planner, Engineer, Executor personas collaborate to plan work, propose changes, and run controlled actions.
+- **Multi-persona orchestrator** – Planner and Executor personas collaborate to plan work, propose changes, and run controlled actions.
 - **LangGraph / LangChain** – Graph-based orchestration stack to model multi-step, stateful flows, including tool calls, code edits, and validation steps.
 - **Hybrid models** – Calls local LLMs (for example via Ollama) and cloud models, depending on task type and cost.
 - **Observability for AI** – Stage 2 introduces an OpenTelemetry-based pipeline focused on AI Studio and key workloads: traces of orchestrator runs; metrics on run duration, success, and error types; logs and events fed into the same monitoring stack.
@@ -233,7 +233,7 @@ Control-Plane-in-a-Box (CPiaB) is the long-term horizon: a sealed, portable Kube
 
 High-level goals:
 
-- Self-contained Talos/Kubernetes + Flux bundle, reproducible and air-gap friendly
+- Self-contained Ubuntu + k3s bundle with Flux, reproducible and air-gap friendly
 - Automated discovery of hardware and network resources in a new environment
 - Zero-trust node onboarding and identity management
 - Declarative expansion of workloads from a canonical Git repository
@@ -251,7 +251,7 @@ In this homelab, CPiaB serves as:
 Funoffshore treats business exploration as a multi-lane engine rather than a single startup.
 
 - **Biz2A – Rapid Prototyping Unit**  
-  24–72 hour prototypes; lightweight frontends and mock integrations; fast PM → Planner → Engineer loops; market-signal testing with minimal investment; high idea volume, low cost of failure.
+  24–72 hour prototypes; lightweight frontends and mock integrations; fast PM → Planner → Executor loops; market-signal testing with minimal investment; high idea volume, low cost of failure.
 
 - **Biz2B – Technical Depth Unit**  
   Real services (APIs, backend systems, infrastructure components); systems design documents and architecture diagrams; homelab-native workloads (microservices, operators, pipelines); research-driven technical evaluations and spike solutions.
@@ -276,15 +276,14 @@ The combination of these personas forms a closed-loop, multi-agent pipeline to e
 
 ---
 
-## Orchestrator Personas (Planner / Engineer / Executor)
+## Orchestrator Personas (Planner / Executor)
 
-At the repo level, an AI orchestrator manages work through three internal personas:
+At the repo level, an AI orchestrator manages work through two internal personas:
 
-- **Planner** – Reads mission and backlog (`ai/mission.md` and `ai/backlog.yaml`); proposes high-level plans and decomposes goals into tasks; prioritizes which tasks to attempt in a given loop.
-- **Engineer** – Translates tasks into concrete code and configuration changes; edits files in the repository following directory and stage constraints; proposes diffs, tests, and validation steps.
-- **Executor** – Proposes or runs the necessary commands to apply changes (for example running scripts, triggering GitOps sync, or verifying cluster state); captures logs and outcomes into `ai/state/` and external log files; reports success or failure back to Planner and Engineer.
+- **Planner** – Reads mission and backlog (`ai/mission.md` and `ai/backlog.yaml`); proposes high-level plans and decomposes goals into tasks; prioritizes which tasks to attempt in a given loop; never runs commands.
+- **Executor** – Runs the necessary commands to apply changes (for example running scripts, triggering GitOps sync, or verifying cluster state); captures logs and outcomes into `ai/state/` and external log files; reports success or failure back to Planner.
 
-Implementation detail: The orchestrator is implemented on top of external LLM systems and tools (such as ChatGPT clients, code editors, and local scripts), but this document treats them abstractly as Planner / Engineer / Executor. A human operator remains in the loop to review diffs and confirm actions. This separation keeps the system safe, auditable, and recoverable, even as automation becomes more capable.
+Implementation detail: The orchestrator is implemented on top of external LLM systems and tools (such as ChatGPT clients, code editors, and local scripts), but this document treats them abstractly as Planner / Executor. A human operator remains in the loop to review diffs and confirm actions. This separation keeps the system safe, auditable, and recoverable, even as automation becomes more capable.
 
 ---
 
@@ -294,10 +293,10 @@ Conceptual text diagram, not exact wiring:
 
 - Funoffshore Homelab
   - Proxmox (N100)
-  - Talos VMs (control plane + workers)
+- Ubuntu Server + k3s VMs (control plane + workers)
   - Kubernetes cluster
   - Synology NAS with NFS exports and persistent volumes
-- Talos-Managed Kubernetes
+- Ubuntu + k3s Kubernetes
   - FluxCD GitOps
   - Ingress-nginx
   - Cloudflared tunnel
@@ -305,7 +304,7 @@ Conceptual text diagram, not exact wiring:
 - AI Studio services (Stage 2)
 - Multi-biz workloads (Stage 3)
 - AI Orchestrator
-  - Planner / Engineer / Executor flows via LangGraph / LangChain
+  - Planner / Executor flows via LangGraph / LangChain
   - Reads/writes repo and coordinates with the operator
 - Multi-Biz Engine
   - Biz2A / Biz2B / Biz2C experiments and services
@@ -317,7 +316,7 @@ Conceptual text diagram, not exact wiring:
 
 High-level directory map:
 
-- `cluster/` – Talos templates and Kubernetes GitOps tree (for example: `kubernetes/flux`, `kubernetes/platform`, `kubernetes/apps`).
+- `cluster/` – Kubernetes GitOps tree (for example: `kubernetes/flux`, `kubernetes/platform`, `kubernetes/apps`).
 - `infrastructure/` – Proxmox VM bootstrap scripts (`infrastructure/proxmox/`) and room for future Terraform/Ansible.
 - `config/` – Cluster definitions and environment files (`config/clusters/`, `config/env/`). No real secrets live here.
 - `scripts/` – Local helper scripts such as `check_cluster.sh`, `host_bootstrap.sh`, and other orchestration helpers.
@@ -326,7 +325,7 @@ High-level directory map:
 - `logs/` – Execution logs (gitignored); bootstrap scripts write timestamped logs here.
 - `docs/` – Architecture documents and repo contract descriptions (for example `docs/architecture.md`, `docs/repo-contract.md`).
 
-Secrets remain local or are stored using encryption tools such as SOPS. The `.talos/` directory remains untracked except for non-secret templates.
+Secrets remain local or are stored using encryption tools such as SOPS. The `infrastructure/proxmox/k3s/` directory contains runtime kubeconfig/token artifacts and should remain untracked.
 
 ---
 
@@ -377,12 +376,12 @@ The orchestrator must not jump ahead to Stage 2 or Stage 3 work while Stage 1 is
    - Local operator machine with necessary tools installed
 2. Clone this repository to the operator machine.
 3. Configure cluster and environment:
-   - Copy and edit files in `config/clusters/` and `config/env/` for your N100 / Talos cluster.
+   - Copy and edit files in `config/clusters/` and `config/env/` for your N100 / Ubuntu+k3s cluster.
    - Ensure addresses, node counts, and storage settings match your Proxmox and Synology setup.
 4. Run the cluster bootstrap script from the appropriate directory, for example:
-   - `infrastructure/proxmox/cluster_bootstrap.sh` creates or updates Proxmox VMs for control plane and workers, injects Talos machine configs, waits for the Kubernetes control plane to become reachable, installs Flux, and points it at `cluster/kubernetes/`.
+   - `infrastructure/proxmox/cluster_bootstrap.sh k3s` installs k3s on the control plane and workers, gathers the kubeconfig under `infrastructure/proxmox/k3s/kubeconfig`, and ensures Flux points at `cluster/kubernetes/`.
 5. Verify the cluster:
-   - Confirm kubeconfig exists locally (for example `.talos/<cluster>/kubeconfig`).
+   - Confirm kubeconfig exists locally (for example `infrastructure/proxmox/k3s/kubeconfig`) and set `export KUBECONFIG=infrastructure/proxmox/k3s/kubeconfig`.
    - Run `kubectl get nodes` and check nodes are Ready.
    - Confirm Flux is reconciling the GitOps tree.
 
@@ -390,15 +389,46 @@ The orchestrator must not jump ahead to Stage 2 or Stage 3 work while Stage 1 is
 
 1. Ensure Stage 1 is at least partially running and the repo is cloned locally.
 2. Configure AI and tool credentials (OpenAI keys, local model endpoints, etc.) according to the harness scripts you use.
-3. From the repo root, run the orchestrator harness script with the desired target, for example a script that:
+3. Run the v7.2 validator (required preflight): `./ai/scripts/validate_orchestrator.sh`
+4. From the repo root, run the orchestrator harness script with the desired target, for example a script that:
    - Reads `ai/mission.md` and `ai/backlog.yaml`
-   - Invokes Planner / Engineer / Executor loops
-   - Proposes diffs or changes
+   - Invokes Planner / Executor loops
+   - Synthesizes tasks and executes them via the harness
    - Writes logs into `ai/state/` and `logs/`
-4. Review proposed diffs and commands as a human operator:
+5. Review proposed diffs and commands as a human operator:
    - Accept or reject changes
    - Run the safe commands to apply changes (for example applying manifests, restarting Flux, etc.)
-5. Observe effects on the cluster using the monitoring stack and adjust `ai/mission.md` and `ai/backlog.yaml` as needed.
+6. Observe effects on the cluster using the monitoring stack and adjust `ai/mission.md` and `ai/backlog.yaml` as needed.
+
+Canonical loop entrypoint:
+- `STAGE=1 /opt/homebrew/bin/bash ./ai/scripts/codex_loop.sh`
+- Legacy `cli_loop.sh` has been removed.
+
+### Local Model Provider (Ollama)
+
+The orchestrator uses **Ollama** as the local execution backend for executor-tier tasks. OpenRouter remains the Architect provider for remote model access.
+
+**Required models:**
+- `qwen-2.5:7b-coder` — Primary executor (code capability)
+- `qwen2.5:7b-instruct` — Local architect / reasoning provider
+
+**Verify models are installed:**
+```bash
+ollama list
+```
+
+**Pull models if missing:**
+```bash
+ollama pull qwen-2.5:7b-coder
+ollama pull qwen2.5:7b-instruct
+```
+
+**Verify Ollama is running:**
+```bash
+curl http://localhost:11434/api/tags
+```
+
+The router configuration lives in `ai/config/model_router.yaml`. Provider implementation is in `ai/providers/ollama.sh`.
 
 ---
 
@@ -406,12 +436,12 @@ The orchestrator must not jump ahead to Stage 2 or Stage 3 work while Stage 1 is
 
 ### Stage 1 – Homelab Platform
 
-Goal: A stable, observable, GitOps-managed Talos/Kubernetes cluster on Proxmox with Synology-backed storage and Cloudflared ingress.
+Goal: A stable, observable, GitOps-managed Ubuntu + k3s cluster on Proxmox with Synology-backed storage and Cloudflared ingress.
 
 Milestones:
 
 - Proxmox base configuration finalized
-- Talos control plane and workers bootstrapped via `infrastructure/proxmox/cluster_bootstrap.sh`
+- k3s control plane and agents bootstrapped via `infrastructure/proxmox/cluster_bootstrap.sh k3s`
 - FluxCD installed and reconciling `cluster/kubernetes/`
 - Ingress controller routing traffic for at least one sample app
 - Cloudflared tunnel configured with DNS entries for public endpoints

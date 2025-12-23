@@ -1,25 +1,20 @@
 # Stage 1 orchestrator model registry (non-secret)
+# See ai/config/model_router.yaml for active router configuration.
 models:
   executor_local:
-    provider: local
-    name: llama3.1:8b
-    max_tokens: 2048
-    temperature: 0.2
+    provider: ollama
+    name: qwen-2.5:7b-coder
+    max_tokens: 4096
+    temperature: 0.3
 
   executor_cloud:
-    provider: openai
-    name: gpt-4.1-mini
-    max_tokens: 2048
-    temperature: 0.2
-
-  engineer_default:
-    provider: openai
-    name: gpt-5-mini
+    provider: openrouter
+    name: openai/gpt-4o-mini
     max_tokens: 4096
-    temperature: 0.1
+    temperature: 0.3
 
   planner_default:
-    provider: openai
-    name: gpt-5.1
-    max_tokens: 8192
-    temperature: 0.2
+    provider: ollama
+    name: qwen2.5:7b-instruct
+    max_tokens: 4096
+    temperature: 0.3

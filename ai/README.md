@@ -1,11 +1,11 @@
 # AI Control Plane
 
-This directory houses the AI company personas (Planner, Engineer, Executor, Robo-Kyle, Narrative), orchestrator, state, backlog, and studio scaffolding. Use `ai/agents/orchestrator.md` as the Codex CLI entrypoint and manage approvals via `ai/state/human_approvals.md`.
+This directory houses the AI personas (Planner, Executor, Narrative), orchestrator, state, backlog, and studio scaffolding. The v7.2 contract lives in `docs/orchestrator_v7_2.txt`.
 
 ## Model tiers
-- `chatgpt-mini` (remote) powers planning personas: Planner, Orchestrator coordination, and Narrative recaps.
-- `qwen2.5-coder:7b` (local) is the default Engineer coder for all repo-wide edits.
-- `deepseek-coder` (local) is the Executor fast shell/diagnostics runner.
+- `chatgpt-mini` (remote) powers the planner and narrative recaps.
+- `qwen-2.5:7b-coder` (local) is the default executor runner for infrastructure scripts.
+- `deepseek-coder` (local) is the fast shell/diagnostics runner.
 
 ## Logging contracts
 - All runs print the `CMD/RES/FILE/SUMMARY` block described in `ai/agents/orchestrator.md`.  
@@ -13,9 +13,8 @@ This directory houses the AI company personas (Planner, Engineer, Executor, Robo
 - `logs/ai/narrative-<timestamp>.log` captures the cinematic recap when the Narrative persona is invoked.
 
 ## Personas
-- **Planner** – high-level planner (no commands or code). Aligns with `ai/mission.md`, manages backlog/charter, approves stage transitions.
-- **Engineer** – repo surgeon. Reads only the files cited by the mission/objective, edits YAML/scripts/docs within allowed paths, obeys branch workflow `ai/<slug>-<yyyymmdd>`.
-- **Executor** – runs commands/diagnostics inside the allowed scope; no refactors, no secrets.
+- **Planner** – synthesizes tasks only; no commands or code edits. Aligns with `ai/mission.md` and manages backlog structure.
+- **Executor** – runs backlog tasks via the harness; no refactors or self-modifying logic.
 - **Narrative** – optional log summarizer (never runs tools).
 
 Full prompt text lives under `ai/agents/`.
@@ -27,8 +26,34 @@ Full prompt text lives under `ai/agents/`.
 - `scripts/ai_harness.sh` – orchestrator entrypoint; documents the backlog/state/log contract and will drive unattended runs.
 - `ai/golden_trail.md` – higher-level tracker with ACTIVE_TASKS and J↔A summaries.
 
+## Model Router & Provider Notes
+
+### Local Provider: Ollama
+- Ollama is the sole local execution backend (v7 directive; LM Studio is removed).
+- Verify models exist: `ollama list`
+- Required models:
+  - `qwen-2.5:7b-coder` — Primary executor (code capability)
+  - `qwen2.5:7b-instruct` — Local architect / reasoning provider
+- Health check: `./ai/providers/ollama.sh health`
+- Default endpoint: `http://localhost:11434`
+
+### Router Configuration
+- Router decisions and circuit breakers live under `logs/router/router.log` and `ai/state/router_state.json`.
+- Inspect current mapping: `ai/model_router.sh select <role> <error_key>`
+- Override router defaults with environment variables:
+  - `MODEL_ROUTER_CONFIG` (defaults to `ai/config/model_router.yaml`)
+  - `MODEL_ROUTER_CMD`
+  - `OLLAMA_ENDPOINT` (default: `http://localhost:11434`)
+  - `OLLAMA_PRIMARY_MODEL` (default: `qwen-2.5:7b-coder`)
+  - `OLLAMA_FALLBACK_MODEL` (default: `qwen-2.5:7b-coder`; override when you need alternate executor/inference models)
+  - `OPENROUTER_MODEL`, `OPENROUTER_PROVIDER_CMD`
+
+### Safety & Observability
+- Safe mode is a manual loop-level halt (see `docs/orchestrator_v7_2.txt`); helper scripts do not enforce it.
+- Summary written to `ai/state/safe_mode_summary.json`; reason logged to `ai/issues.yaml`.
+
 ## Safe edit boundaries
-- **Allowed for AI edits**: `ai/**`, `cluster/kubernetes/**`, `cluster/talos/**`, `infrastructure/proxmox/**` (scripts only), `scripts/**`, `docs/**`, `ui/logs/**` (static assets), mission/backlog files.
+- **Allowed for AI edits**: `ai/**`, `cluster/kubernetes/**`, `infrastructure/proxmox/**` (scripts only), `scripts/**`, `docs/**`, `ui/logs/**` (static assets), mission/backlog files.
 - **Read-only**: `config/env/**` (secrets), Kubernetes Secret manifests, `cluster/kubernetes/platform/ingress/cloudflared/deployment.yaml`, low-level bootstrap binaries, any file explicitly tagged “human only”.
 - **Stage 1 vs Stage 2**: Stage 1 tasks must not touch `ai/studio/**` (Biz2/Biz3). Stage 2 tasks must stay inside AI Studio assets unless the backlog explicitly requires an infra fix.
 

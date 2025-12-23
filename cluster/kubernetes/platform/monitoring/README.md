@@ -1,5 +1,5 @@
 # Monitoring platform
-This overlay runs the canonical monitoring stack for the Talos cluster.
+This overlay runs the canonical monitoring stack for the k3s cluster.
 
 - `alertmanager/` manages Alertmanager to route cluster alerts.
 - `prometheus/` deploys Prometheus with storage on Longhorn and additional scrape configs (including the OpenTelemetry Collector).

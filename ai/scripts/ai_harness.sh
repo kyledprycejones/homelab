@@ -13,6 +13,9 @@ cd "$ROOT_DIR"
 
 CONFIG_YAML="config/clusters/${CLUSTER}.yaml"
 ENV_FILE="config/env/${CLUSTER}.env"
+REMOTE_ROOT="${REMOTE_ROOT:-/tmp/homelab}"
+REMOTE_CONFIG_YAML="${REMOTE_ROOT}/${CONFIG_YAML}"
+REMOTE_ENV_FILE="${REMOTE_ROOT}/${ENV_FILE}"
 
 if [ -z "$TASK_TARGET" ]; then
   echo "Missing TASK_TARGET" >&2
@@ -61,14 +64,44 @@ else
   SCP_CMD=(scp "${SCP_OPTS[@]}")
 fi
 
+RSYNC_EXCLUDES=(
+  "--exclude=.git"
+  "--exclude=ai/state/**"
+  "--exclude=ui/logs/**"
+)
+RSYNC_CMD=(rsync -az --rsync-path="mkdir -p ${REMOTE_ROOT} && rsync" -e "${SSH_CMD[*]}" "${RSYNC_EXCLUDES[@]}")
+
 TARGET="${SSH_USER}@${CTRL_IP}"
-WORKING_SCRIPT="/tmp/${TASK_ID}-$(basename "$TASK_TARGET")"
-DEPLOY_SCRIPT="/tmp/${TASK_ID}.sh"
+REMOTE_REPO="${REMOTE_ROOT}"
+REMOTE_TARGET="${REMOTE_REPO}/${TASK_TARGET}"
 
 printf 'HARNESS_START task=%s target=%s stage=%s detail=%s\n' "$TASK_ID" "$TASK_TARGET" "$TASK_STAGE" "$TASK_DETAIL"
 
-"${SCP_CMD[@]}" "$TASK_TARGET" "$TARGET:$WORKING_SCRIPT"
-"${SSH_CMD[@]}" "$TARGET" "sudo mv $WORKING_SCRIPT $DEPLOY_SCRIPT && sudo chmod +x $DEPLOY_SCRIPT"
-"${SSH_CMD[@]}" "$TARGET" "sudo $DEPLOY_SCRIPT ${TASK_STAGE}"
+set +e
+"${RSYNC_CMD[@]}" "${ROOT_DIR}/" "${TARGET}:${REMOTE_REPO}/"
+rsync_rc=$?
+set -e
+printf 'HARNESS_STEP name=rsync rc=%d\n' "$rsync_rc"
+if [ "$rsync_rc" -ne 0 ]; then
+  printf 'HARNESS_END task=%s exit=%d\n' "$TASK_ID" "$rsync_rc"
+  exit "$rsync_rc"
+fi
 
-printf 'HARNESS_END task=%s exit=0\n' "$TASK_ID"
+set +e
+"${SSH_CMD[@]}" "$TARGET" "cd ${REMOTE_REPO} && sudo chmod +x ${TASK_TARGET} 2>/dev/null || true"
+chmod_rc=$?
+set -e
+printf 'HARNESS_STEP name=chmod rc=%d\n' "$chmod_rc"
+if [ "$chmod_rc" -ne 0 ]; then
+  printf 'HARNESS_END task=%s exit=%d\n' "$TASK_ID" "$chmod_rc"
+  exit "$chmod_rc"
+fi
+
+set +e
+"${SSH_CMD[@]}" "$TARGET" "cd ${REMOTE_REPO} && sudo env CLUSTER=${CLUSTER} CONFIG_ENV=${REMOTE_ENV_FILE} CLUSTER_CONFIG_FILE=${REMOTE_CONFIG_YAML} CTRL_IP=${CTRL_IP} DOMAIN=${DOMAIN} ${TASK_TARGET} ${TASK_STAGE}"
+exec_rc=$?
+set -e
+printf 'HARNESS_STEP name=exec rc=%d\n' "$exec_rc"
+
+printf 'HARNESS_END task=%s exit=%d\n' "$TASK_ID" "$exec_rc"
+exit "$exec_rc"

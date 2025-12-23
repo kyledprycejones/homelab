@@ -8,45 +8,41 @@
 # Stage definitions
 stages:
   vms:
-    description: "Proxmox VM creation/configuration for Talos nodes"
-    command: "infrastructure/proxmox/vms.sh"
+    description: "Proxmox VM creation/configuration for Ubuntu Server + k3s nodes"
+    command: "infrastructure/proxmox/provision_vms.sh"
     files:
-      - infrastructure/proxmox/vms.sh
+      - infrastructure/proxmox/provision_vms.sh
       - config/clusters/prox-n100.yaml
       - config/env/prox-n100.env
     architecture_sections:
       - proxmox
-      - talos
-    success_criteria:
-      - "Talos VMs created and running"
-      - "VMs have correct resource allocation"
-      - "VMs can network via bridge"
-
-  talos:
-    description: "Talos Kubernetes bootstrap (control plane + workers)"
-    command: "infrastructure/proxmox/cluster_bootstrap.sh talos"
-    files:
-      - infrastructure/proxmox/vms.sh
-      - infrastructure/proxmox/cluster_bootstrap.sh
-      - cluster/talos/controlplane.yaml
-      - cluster/talos/worker.yaml
-      - cluster/talos/talconfig.yaml
-      - config/clusters/prox-n100.yaml
-    architecture_sections:
-      - talos
-      - proxmox
       - kubernetes
     success_criteria:
-      - "Talos VMs successfully created"
-      - "Nodes boot and expose Talos API"
-      - "talosctl get machines returns correct state"
-      - "Kubernetes API is accessible"
+      - "Ubuntu Server VMs created and running"
+      - "VMs have the requested CPUs, RAM, and disk"
+      - "VMs respond on their static IPs over vmbr0"
+
+  k3s:
+    description: "k3s bootstrap (control plane + workers)"
+    command: "infrastructure/proxmox/cluster_bootstrap.sh k3s"
+    files:
+      - infrastructure/proxmox/provision_vms.sh
+      - infrastructure/proxmox/cluster_bootstrap.sh
+      - infrastructure/proxmox/check_cluster.sh
+      - config/clusters/prox-n100.yaml
+      - infrastructure/proxmox/k3s/kubeconfig
+    architecture_sections:
+      - kubernetes
+      - flux
+      - proxmox
+    success_criteria:
+      - "k3s control plane and agents installed"
+      - "Nodes are Ready via kubeconfig"
+      - "kubectl access to the cluster works"
     diagnostics:
-      - "talosctl --nodes ${CTRL_IP} version"
-      - "talosctl --nodes ${CTRL_IP} get machines"
-      - "talosctl --nodes ${CTRL_IP} health"
-      - "talosctl --nodes ${CTRL_IP} dmesg | tail -100"
-      - "kubectl get nodes -o wide"
+      - "KUBECONFIG=infrastructure/proxmox/k3s/kubeconfig kubectl get nodes -o wide"
+      - "KUBECONFIG=infrastructure/proxmox/k3s/kubeconfig kubectl cluster-info"
+      - "KUBECONFIG=infrastructure/proxmox/k3s/kubeconfig kubectl -n kube-system get pods -o wide"
 
   infra:
     description: "Core platform infrastructure (Flux, Longhorn, NFS)"
@@ -145,14 +141,14 @@ protected_files:
 
 # Architecture sections referenced in stage mappings
 # These map to sections in ai/master_memo.md
-architecture_section_keywords:
+  architecture_section_keywords:
   proxmox:
     - "Proxmox"
     - "VM"
     - "virtualization"
-  talos:
-    - "Talos"
-    - "Kubernetes"
+  k3s:
+    - "Ubuntu Server"
+    - "k3s"
     - "control plane"
     - "worker"
   kubernetes:

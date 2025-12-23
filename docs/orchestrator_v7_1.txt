@@ -1,0 +1,712 @@
+Funoffshore Homelab – Orchestrator v7.1 Architecture
+P0 Control Plane Hardening
+
+====================================================================
+
+EXECUTIVE SUMMARY
+=================
+
+v7.1 is a P0 hardening pass that fixes control plane bugs discovered
+during initial v7 operations. It establishes truthfulness invariants
+that prevent "paper success" and "lying logs."
+
+Why v7.1 exists:
+• Five critical bugs were found: id/task_id mismatch, status enum chaos,
+  loops ignoring safe mode, stub personas claiming success, harness
+  reporting hardcoded exit=0
+• These bugs caused silent failures and fake convergence signals
+• v7.1 fixes the bugs and documents invariants to prevent recurrence
+
+What v7.1 guarantees:
+• Truthful task state (no fake success from stubs)
+• Real exit codes (no hardcoded exit=0 in harness)
+• Safe mode actually halts (loops stop when told to stop)
+• Consistent field usage (id for backlog, everywhere)
+
+What v7.1 does NOT attempt:
+• Autonomous recovery (still supervised)
+• Domain reasoning (no legacy Kubernetes intelligence)
+• Drift engine integration (exists but not in control path)
+• Claim-based convergence (future work)
+
+Who this document is for:
+• Operators who run the orchestrator
+• Maintainers who fix control plane issues
+• Engineers who need to understand state machine behavior
+NOT for end users or high-level architectural discussions.
+
+What changed from v7:
+• Bug fixes only (no new features)
+• Explicit truthfulness invariants (documented and tested)
+• Smoke test coverage for P0 guarantees
+
+====================================================================
+
+Document History
+----------------
+
+v2–v4: Established layered architecture, error hashing, bounded escalation,
+       side-branch isolation. Each iteration refined execution mechanics.
+
+v5:    Final consolidation. Normative rules, attempt policy tables,
+       patch gating, atomic state updates. Functional but reactive.
+
+v6:    Introduced capability-based model routing, provider failover,
+       forward-progress guarantees. Separated attempts vs failover vs evidence.
+       Executor vs Architect role separation. Safe mode semantics.
+
+v7:    Memo-driven convergence. The orchestrator measures drift between
+       architecture memos and the repository, then reduces that drift
+       incrementally and observably. Two drift lanes (structural vs
+       operational), claim freezing, episode management.
+
+v7.1:  THIS DOCUMENT. P0 hardening pass. Fixes control plane bugs discovered
+       during initial v7 operations. Establishes truthfulness invariants
+       that prevent "paper success" and "lying logs."
+
+What v7.1 Hardens (Normative)
+-----------------------------
+
+v7.1 establishes the following P0 invariants (violations are bugs):
+
+1. TASK ID FIELD CONSISTENCY (MUST HOLD)
+   • All backlog lookups MUST use the `id` field
+   • The `task_id` field MUST NOT be used for backlog queries
+   • Task status updates, lookups, and transitions MUST reference `id`
+   • Runtime state files MAY use `task_id` internally (see Backlog vs Runtime State)
+
+2. STATUS ENUM UNIFICATION (MUST HOLD)
+   • The canonical terminal success state is `success`
+   • `completed` MUST be normalized to `success` on read/write
+   • Code MAY accept `completed` but MUST store `success`
+   • The state machine MUST enforce valid transitions (see table)
+
+3. SAFE MODE HALT ENFORCEMENT (MUST HOLD)
+   • All main loops MUST check ai/state/status.json before each iteration
+   • When orchestrator_status = "halted_safe_mode", loops MUST exit immediately
+   • No task state transitions MUST occur while halted
+   • Loops MUST exit with code 0 (clean halt, not error)
+
+4. STUB PERSONA TRUTHFULNESS (MUST HOLD)
+   • Stub personas MUST NOT mark tasks as "success"
+   • Stub personas MUST mark tasks as "blocked"
+   • Notes MUST explicitly state "stub implementation"
+   • Any success signal from a stub is a P0 bug
+
+5. HARNESS EXIT CODE TRUTHFULNESS (MUST HOLD)
+   • ai_harness.sh MUST report the actual exit code of executed commands
+   • The harness MUST NOT report exit=0 when a command failed
+   • Exit codes MUST be captured after each command (scp_rc, mv_rc, exec_rc)
+   • HARNESS_END lines MUST contain the real exit code
+
+====================================================================
+
+CANONICAL SCHEMAS
+=================
+
+Backlog Entry Schema
+--------------------
+
+Each task in ai/backlog.yaml MUST conform to this schema:
+
+REQUIRED FIELDS:
+
+  id: string
+      Unique task identifier. MUST be present. Used for all lookups.
+      Format: {STAGE}-{SEQ}-{TYPE} (e.g., "S1-001-PLANNER-READ-MEMO")
+
+  status: enum
+      Current task state. One of:
+      • pending       - Queued, ready to process
+      • running       - Currently being executed
+      • waiting_retry - Failed, scheduled for retry
+      • review        - Awaiting human/planner review
+      • blocked       - Cannot proceed without intervention
+      • success       - Completed successfully
+      • failed        - Failed, no more retries
+      • escalated     - Handed to different persona
+
+  persona: enum
+      Handler type. One of: executor, engineer, planner
+
+  stage: integer
+      Stage number (1, 2, 3, etc.)
+
+OPTIONAL FIELDS:
+
+  summary: string
+      One-line description
+
+  detail: string
+      Extended description
+
+  target: string
+      File or script path this task operates on
+
+  depends_on: [string]
+      List of task IDs that must complete first
+
+  attempts: integer
+      Number of execution attempts (default: 0)
+
+  max_attempts: integer
+      Maximum retry count (default: 3)
+
+  note: string
+      Human-readable status note
+
+  metadata: object
+      Additional key-value pairs (stage, parent_task, etc.)
+
+EXAMPLE:
+
+```yaml
+- id: S1-001-PLANNER-READ-MEMO
+  stage: 1
+  persona: planner
+  summary: Read master memo and generate stage 1 work
+  detail: Parse docs/master_memo.txt, extract requirements
+  target: docs/master_memo.txt
+  status: pending
+  attempts: 0
+  max_attempts: 3
+```
+
+Backlog State vs Runtime State
+------------------------------
+
+CRITICAL DISTINCTION:
+
+Backlog (ai/backlog.yaml):
+• Uses `id` as the canonical, persistent task identifier
+• This field is authoritative for all lookups, updates, transitions
+• MUST be used by all code that reads or modifies task state
+
+Runtime State (ai/state/CURRENT_TASK_FILE, logs, etc.):
+• MAY use `task_id` as an ephemeral, runtime-only field
+• `task_id` in runtime files is for internal state tracking only
+• Runtime identifiers MUST NOT be used for backlog lookups or transitions
+
+INVARIANT:
+• When code reads from backlog → use `.id` or `entry.get("id")`
+• When code reads from runtime state → use `.task_id` (if that state file uses it)
+• Never mix: backlog always uses `id`, runtime may use `task_id`
+
+This distinction exists for historical reasons and is preserved to avoid
+breaking runtime state file schemas. Future work may unify to `id` everywhere.
+
+Status Enum and Valid Transitions
+---------------------------------
+
+The task state machine enforces these transitions:
+
+┌─────────────┬───────────────────────────────────────────────────────┐
+│ From        │ Allowed Destinations                                  │
+├─────────────┼───────────────────────────────────────────────────────┤
+│ pending     │ running                                               │
+├─────────────┼───────────────────────────────────────────────────────┤
+│ running     │ success, failed, waiting_retry, review, blocked,      │
+│             │ escalated                                             │
+├─────────────┼───────────────────────────────────────────────────────┤
+│ waiting_retry│ pending, escalated                                   │
+├─────────────┼───────────────────────────────────────────────────────┤
+│ review      │ success, failed, escalated                            │
+└─────────────┴───────────────────────────────────────────────────────┘
+
+NORMALIZATION RULE:
+• `completed` is normalized to `success` on read and write
+• Code MAY pass `completed`; system stores `success`
+• Both are semantically equivalent terminal success states
+
+INVALID TRANSITIONS:
+• Any transition not in the table above is rejected
+• set_task_status returns exit code 2 for invalid transitions
+• SKIP_VALIDATION=1 bypasses validation (use with extreme caution)
+
+Terminal vs Non-Terminal States
+-------------------------------
+
+TERMINAL STATES (no further transitions):
+• success  - Task completed successfully, will not be retried
+• failed   - Task failed permanently, will not be retried
+
+NON-TERMINAL STATES:
+• pending       - Ready to run (time-bound: waits for scheduler)
+• running       - Currently executing (time-bound: duration of execution)
+• waiting_retry - Failed but will retry (time-bound: retry delay)
+• review        - Awaiting approval (non-time-bound: waits for human/planner)
+• blocked       - Cannot proceed (non-time-bound: requires human intervention)
+• escalated     - Handed off (time-bound: escalation target will process)
+
+IMPLICATIONS:
+• Terminal states MUST NOT appear in task selection queries
+• blocked requires explicit human action (edit backlog or reset)
+• waiting_retry and escalated have implicit timeouts/triggers
+• review and blocked are "wait for external signal" states
+
+Safe Mode Status Schema
+-----------------------
+
+ai/state/status.json controls orchestrator halt state:
+
+```json
+{
+  "orchestrator_status": "halted_safe_mode",
+  "safe_mode_reason": "max_cycles",
+  "safe_mode_timestamp": "2025-12-22T00:10:18Z"
+}
+```
+
+FIELDS:
+
+  orchestrator_status: enum
+      • "running"           - Normal operation
+      • "halted_safe_mode"  - Loop MUST exit immediately
+
+  safe_mode_reason: string
+      Why safe mode was entered (max_cycles, no_providers, human_trigger, etc.)
+
+  safe_mode_timestamp: ISO8601
+      When safe mode was entered
+
+LOOP BEHAVIOR:
+
+All main loops (codex_loop.sh, bootstrap_loop.sh, etc.) MUST:
+
+1. Check status.json at the start of each iteration
+2. If orchestrator_status = "halted_safe_mode":
+   • Log reason to stderr
+   • Exit with code 0 (clean halt, not error)
+   • Do NOT continue processing tasks
+
+SAFE MODE INVARIANTS:
+
+INVARIANT 1: NO TASK STATE TRANSITIONS WHILE HALTED
+• If orchestrator_status = "halted_safe_mode", no task status MAY change
+• set_task_status SHOULD check safe mode before updating (optional)
+• Loops MUST exit before reaching persona invocation code
+
+INVARIANT 2: HALT IS IMMEDIATE
+• Loops MUST NOT complete "the current task" before halting
+• Loops MUST NOT wait for running tasks to finish
+• Check happens before task selection, not after
+
+INVARIANT 3: HALT IS CLEAN
+• Exit code MUST be 0 (not 1, not 2)
+• Log message MUST include safe_mode_reason
+• No error semantics (halt is not a failure, it's a commanded stop)
+
+Harness Log Line Schema
+-----------------------
+
+ai/scripts/ai_harness.sh emits structured log lines:
+
+START LINE:
+```
+HARNESS_START task=<TASK_ID> target=<SCRIPT_PATH> stage=<STAGE_NUM> detail=<DETAIL>
+```
+
+END LINE:
+```
+HARNESS_END task=<TASK_ID> exit=<EXIT_CODE>
+```
+
+TRUTHFULNESS GUARANTEE:
+• exit=<N> MUST reflect the actual exit code of the executed command
+• exit=0 means the command succeeded
+• exit=N (N > 0) means the command failed
+• The harness MUST NOT report exit=0 when the command failed
+
+IMPLEMENTATION:
+• SCP failure → report scp_rc, exit immediately
+• MV/chmod failure → report mv_rc, exit immediately
+• Script execution → report exec_rc, exit with exec_rc
+
+====================================================================
+
+TRUTHFULNESS GUARANTEES
+=======================
+
+v7.1 establishes hard invariants that prevent "paper success."
+
+Invariant Summary Table
+-----------------------
+
+┌────────────────────────┬──────────────────────────┬────────────────────────┐
+│ Invariant              │ Enforced By              │ Failure Symptom        │
+├────────────────────────┼──────────────────────────┼────────────────────────┤
+│ No Fake Success        │ persona_engineer.sh      │ Stub task shows        │
+│                        │ (marks blocked, not      │ success without real   │
+│                        │ success)                 │ work                   │
+├────────────────────────┼──────────────────────────┼────────────────────────┤
+│ Real Exit Codes        │ ai_harness.sh            │ HARNESS_END always     │
+│                        │ (captures scp_rc,        │ reports exit=0         │
+│                        │ mv_rc, exec_rc)          │                        │
+├────────────────────────┼──────────────────────────┼────────────────────────┤
+│ Safe Mode Halts        │ codex_loop.sh            │ Loop continues running │
+│                        │ (check_safe_mode)        │ in halted_safe_mode    │
+├────────────────────────┼──────────────────────────┼────────────────────────┤
+│ Consistent id Usage    │ util_tasks.sh,           │ Task lookups return    │
+│                        │ run_summary.py,          │ "unknown" or fail      │
+│                        │ orchestrator_dry_run.sh  │ silently               │
+├────────────────────────┼──────────────────────────┼────────────────────────┤
+│ Valid State Transitions│ util_tasks.sh            │ set_task_status        │
+│                        │ (set_task_status)        │ returns exit code 2    │
+└────────────────────────┴──────────────────────────┴────────────────────────┘
+
+DETECTION:
+• All invariants have smoke test coverage
+• Run: ./ai/scripts/test_orchestrator_patches.sh
+• Any test failure indicates invariant violation (P0 bug)
+
+No Fake Success From Personas
+-----------------------------
+
+RULE: A persona MUST NOT mark a task as "success" unless it performed
+      real, verifiable work.
+
+IMPLEMENTATION:
+• persona_engineer.sh is currently a stub
+• Stub MUST mark tasks as "blocked" (not "success")
+• Note MUST include: "stub implementation; cannot perform real work"
+• This prevents the backlog from showing false convergence
+
+VIOLATION DETECTION:
+• If a stub persona marks success → test failure
+• Smoke test checks that persona_engineer.sh uses "blocked", not "success"
+
+No Fake Exit Codes From Harness
+-------------------------------
+
+RULE: ai_harness.sh MUST report the actual exit code of executed commands.
+
+IMPLEMENTATION:
+• Capture exit code after each command: scp_rc, mv_rc, exec_rc
+• Emit HARNESS_END with the real exit code
+• Exit the harness with the same code
+
+VIOLATION DETECTION:
+• If harness always reports exit=0 → test failure
+• Smoke test checks for variable exit codes in HARNESS_END pattern
+
+No Paper Convergence Without Evidence
+-------------------------------------
+
+RULE: A task transition to "success" MUST be accompanied by evidence
+      that work was actually performed.
+
+FORMS OF EVIDENCE:
+• Log file with HARNESS_END exit=0
+• Git diff showing actual file changes
+• Validation command output confirming state change
+
+WHAT IS NOT EVIDENCE:
+• Stub persona marking success
+• Hardcoded exit=0 in harness
+• Empty or missing log files
+
+Safe Mode Actually Halts
+------------------------
+
+RULE: When orchestrator_status = "halted_safe_mode", all loops MUST stop.
+
+IMPLEMENTATION:
+• check_safe_mode() function reads status.json
+• Returns non-zero when halted_safe_mode is set
+• Main loop checks at start of each iteration
+• Loop exits cleanly on halt
+
+VIOLATION DETECTION:
+• If loop continues running in halted_safe_mode → test failure
+• Smoke test verifies check_safe_mode() behavior
+
+====================================================================
+
+NON-GOALS
+=========
+
+v7.1 explicitly does NOT attempt the following:
+
+Autonomous Recovery
+-------------------
+• The orchestrator remains supervised
+• Blocked tasks require human intervention
+• Safe mode termination requires human reset
+• No self-healing beyond bounded retry attempts
+
+Domain Reasoning
+----------------
+• No k3s-specific logic
+• No Kubernetes-aware decisions
+• No Proxmox VM intelligence
+• Stage scripts provide domain knowledge, not the orchestrator
+
+Drift Engine Integration
+------------------------
+• ai/drift_engine.py exists but is not in the main loop
+• Convergence is task-based, not claim-based
+• Drift measurement is not active
+• Future work will integrate drift-driven convergence
+
+Claim-Based Convergence
+-----------------------
+• v7 architecture describes claim extraction and evaluation
+• v7.1 does not implement this
+• Current operation is backlog-task-driven
+• Claims remain aspirational for now
+
+Architectural Innovation
+------------------------
+• v7.1 fixes bugs, does not add features
+• No new personas, no new state files, no new loop logic
+• Hardening only
+
+====================================================================
+
+OPERATIONAL WORKFLOW
+====================
+
+How Loops Run
+-------------
+
+1. codex_loop.sh is the primary execution loop
+2. Each iteration:
+   a. Check safe mode (exit if halted)
+   b. Sync backlog (stage1_backlog_sync.py)
+   c. Select next pending task (yaml_next_task)
+   d. Update task to "running"
+   e. Invoke orchestrator_loop.sh (dispatches to persona)
+   f. Persona executes and updates task status
+   g. Log results
+   h. Sleep, repeat
+
+How Loops Halt
+--------------
+
+Loops halt when:
+• orchestrator_status = "halted_safe_mode" in status.json
+• No pending tasks in backlog (enters wait mode)
+• Unrecoverable error (exit with non-zero code)
+
+To manually halt:
+```bash
+echo '{"orchestrator_status":"halted_safe_mode","safe_mode_reason":"manual","safe_mode_timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > ai/state/status.json
+```
+
+How to Reset
+------------
+
+To resume from halted state:
+```bash
+echo '{"orchestrator_status":"running"}' > ai/state/status.json
+```
+
+To reset a blocked task:
+```bash
+# Edit ai/backlog.yaml, change status: blocked → status: pending
+# Or use SKIP_VALIDATION=1 with set_task_status (not recommended)
+```
+
+How to Run the Smoke Test
+-------------------------
+
+The smoke test validates P0 invariants:
+
+```bash
+./ai/scripts/test_orchestrator_patches.sh
+```
+
+Expected output:
+```
+=== Test 1: Task status transitions (id field) ===
+PASS: get_task_status correctly finds task using 'id' field
+PASS: yaml_update_task correctly updates task using 'id' field
+PASS: Status transition to 'success' works
+
+=== Test 2: Safe mode halts loop ===
+PASS: check_safe_mode correctly detects halted_safe_mode
+PASS: check_safe_mode correctly allows normal status
+
+=== Test 3: Failed execution reports failure ===
+PASS: ai_harness.sh reports actual exit code
+
+=== Test 4: Engineer persona blocked (not fake success) ===
+PASS: persona_engineer.sh correctly blocks instead of fake success
+
+=== Test 5: Consistent 'id' field usage across codebase ===
+PASS: Codebase consistently uses 'id' for backlog tasks
+
+=== All smoke tests passed ===
+```
+
+If any test fails, the P0 invariants are violated.
+
+====================================================================
+
+KNOWN LIMITATIONS AND STUBS
+===========================
+
+This section documents what is NOT yet implemented.
+
+IMPORTANT: Stubs exist intentionally. They MUST NOT be interpreted as
+"working features." Any success signal from a stub is a P0 bug.
+
+Engineer Persona (STUB — INTENTIONAL)
+-------------------------------------
+
+File: ai/orchestrator/lib/persona_engineer.sh
+
+STATUS: Stub implementation. Does not perform real engineering work.
+
+CURRENT BEHAVIOR:
+• Marks ALL tasks as "blocked" (never "success")
+• Note: "Engineer persona is a stub implementation; cannot perform
+  real engineering work. Task blocked pending implementation."
+• This is correct behavior for a stub
+
+INVARIANT:
+• If persona_engineer.sh marks any task as "success" → P0 BUG
+• Smoke test enforces this
+
+WHEN IMPLEMENTED:
+• Will analyze task requirements
+• Generate minimal patches for code changes
+• Apply patches via safety rails
+• Mark as "success" only after verified application and validation
+
+Planner Persona (PARTIAL — HARDCODED)
+-------------------------------------
+
+File: ai/orchestrator/lib/persona_planner.sh
+
+STATUS: Partially implemented. Adds hardcoded stage tasks.
+
+CURRENT BEHAVIOR:
+• Reads task from backlog
+• Appends predefined stage tasks (from planner_stage_tasks)
+• Marks original task as "success" if tasks were added
+
+LIMITATION:
+• Does not dynamically analyze memos
+• Task list is hardcoded, not derived from drift analysis
+• This is NOT a stub (it does real work, just not dynamic work)
+
+WHEN IMPROVED:
+• Will read architecture memos
+• Extract requirements dynamically
+• Generate tasks based on memo content, not hardcoded lists
+
+Drift Engine (NOT IN CONTROL PATH)
+----------------------------------
+
+File: ai/drift_engine.py
+
+STATUS: Exists but not integrated into main loop.
+
+v7 INTENT:
+• Extract claims from architecture memos
+• Evaluate claims against repository
+• Compute drift scores
+• Drive claim-based convergence
+
+CURRENT REALITY:
+• drift_engine.py exists with claim extraction logic
+• Main loops (codex_loop.sh) do not invoke it
+• Convergence is task-based, not claim-based
+• This is intentional (v7.1 is hardening, not feature work)
+
+PREVENTATIVE NOTE:
+• Do not assume drift_engine.py is "broken" because it's unused
+• It is unused by design (integration deferred to future work)
+• Do not add drift_engine.py calls to main loops without explicit design
+
+====================================================================
+
+APPENDIX: QUICK COMMANDS
+========================
+
+Check orchestrator status:
+```bash
+cat ai/state/status.json | jq .
+```
+
+View current backlog:
+```bash
+yq -r '.[] | "\(.id): \(.status)"' ai/backlog.yaml
+```
+
+Run smoke test:
+```bash
+./ai/scripts/test_orchestrator_patches.sh
+```
+
+Halt orchestrator:
+```bash
+jq -n '{orchestrator_status:"halted_safe_mode",safe_mode_reason:"manual",safe_mode_timestamp:now|strftime("%Y-%m-%dT%H:%M:%SZ")}' > ai/state/status.json
+```
+
+Resume orchestrator:
+```bash
+echo '{"orchestrator_status":"running"}' > ai/state/status.json
+```
+
+Check task status by ID:
+```bash
+yq -r '.[] | select(.id == "S1-001-PLANNER-READ-MEMO")' ai/backlog.yaml
+```
+
+View harness log format:
+```bash
+grep -E "HARNESS_START|HARNESS_END" ai/logs/executor/*.log | tail -20
+```
+
+====================================================================
+
+ALIGNMENT WITH v7 PRINCIPLES
+============================
+
+v7.1 maintains all v7 architectural principles:
+
+MEMO-DRIVEN CONVERGENCE:
+• v7 intent preserved
+• Drift engine exists, awaiting integration
+• Task-based operation is compatible with future claim-based operation
+
+TRUTHFULNESS:
+• v7.1 STRENGTHENS this with explicit invariants
+• No fake success from stubs
+• No lying exit codes from harness
+• Safe mode actually halts
+
+OBSERVABILITY:
+• State files remain human-readable JSON
+• Log lines follow documented schema
+• Status transitions are auditable
+
+BOUNDED AUTONOMY:
+• Task state machine enforces valid transitions
+• Personas cannot mark arbitrary success
+• Human intervention required for blocked tasks
+
+WHAT CHANGED IN v7.1
+--------------------
+
+1. Bug fixes only (id vs task_id, status enum, exit codes)
+2. Explicit truthfulness invariants (documented and tested)
+3. Safe mode halt enforcement (loops actually stop)
+4. Stub behavior clarification (blocked, not success)
+5. Smoke test coverage for P0 invariants
+
+WHAT DID NOT CHANGE
+-------------------
+
+• Four-layer architecture (Human → Orchestrator → Drift Engine → Providers)
+• Memo as source of truth
+• Episode-scoped determinism
+• Provider failover semantics
+• Patch safety rails
+• Protected files list
+
+====================================================================
+
+END OF DOCUMENT
